@@ -1,0 +1,1756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111517">
+  <meta name="description" content="A private, local karaoke studio with natural reverb, echo, vocal sound check, and recording. No uploads.">
+  <title>ROOMTONE — Karaoke Studio</title>
+  <style>
+    :root {color-scheme:dark; --bg:#101416; --panel:#1a2022; --panel2:#222a2c; --line:#3a4446; --ink:#edf1ef; --muted:#a2acac; --accent:#b8e079; --warning:#f6c978; --danger:#fd8b82; --radius:5px}
+    * { box-sizing: border-box }
+    html { scroll-behavior:smooth }
+    body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif }
+    button, select, input {font:inherit}
+    button, select {border-radius:var(--radius)}
+    button {cursor:pointer}
+    button:disabled {opacity:.5;cursor:not-allowed}
+    button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible {outline:2px solid var(--accent);outline-offset:3px}
+    a {color:var(--accent)}
+    .shell {max-width:1100px; margin:0 auto; padding:0 22px 60px}
+    header {display:flex; align-items:center; justify-content:space-between; gap:14px; padding:27px 0; border-bottom:1px solid var(--line)}
+    .brand {display:flex;align-items:baseline;gap:12px}
+    .brand strong {font-size:21px;letter-spacing:.12em;font-weight:750}
+    .brand small, .smallcaps {font-size:11px;font-weight:680;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+    .status {border:1px solid var(--line); padding:6px 10px;display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted);white-space:nowrap}
+    .dot {width:7px;height:7px;border-radius:50%;background:#777;display:inline-block}
+    .dot.live{background:var(--accent)}
+    h1 {font-size:clamp(26px,4vw,42px);line-height:1.18;letter-spacing:-.04em;margin:0 0 12px}
+    h2 {font-size:17px;font-weight:650;margin:0}
+    p {margin:0}
+    .intro {padding:34px 0 24px;display:flex;justify-content:space-between;align-items:flex-end;gap:20px}
+    .intro p {color:var(--muted);max-width:570px}
+    .intro aside {font-size:12px;color:var(--muted);text-align:right;max-width:230px}
+    .notice {display:flex;align-items:flex-start;gap:11px;border:1px solid #776345;background:#2a261e;color:#f7ddb5;padding:13px 15px;font-size:13px;margin:0 0 18px}
+    .notice strong {white-space:nowrap}
+    .notice .symbol {font-size:18px;line-height:1.05}
+    .grid {display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .card {background:var(--panel);border:1px solid var(--line);padding:22px}
+    .card-head {display:flex;justify-content:space-between;gap:15px;align-items:center;margin-bottom:22px}
+    .card-head .tag {font-size:11px;color:var(--muted);border:1px solid var(--line);padding:3px 7px}
+    label.block {display:block;color:var(--muted);font-size:12px;font-weight:650;margin:0 0 8px}
+    select {display:block;width:100%;min-width:0;background:var(--panel2);color:var(--ink);border:1px solid #576365;padding:10px 11px;outline:none}
+    .help {font-size:12px;color:var(--muted);margin:9px 0 0}
+    .meter-row {display:flex;align-items:center;gap:13px;margin-top:22px}
+    .meter {height:11px;background:#343c3d;border:1px solid #4c5657;flex:1;overflow:hidden;position:relative}
+    .meter-fill {height:100%;width:0;background:var(--accent);transition:width 90ms linear}
+    .meter-fill.hot {background:var(--danger)}
+    .meter-row output {font-size:12px;font-variant-numeric:tabular-nums;color:var(--muted);min-width:48px;text-align:right}
+    .meter-title {font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+    .monitor {display:flex;align-items:center;gap:10px;margin-top:19px}
+    .btn {border:1px solid #596464;background:var(--panel2);color:var(--ink);padding:11px 16px;font-weight:650;min-height:44px}
+    .btn:hover:not(:disabled) {border-color:#c2ceca}
+    .btn-main {background:var(--accent);border-color:var(--accent);color:#172018}
+    .btn-main:hover:not(:disabled) {background:#d4efab;border-color:#d4efab}
+    .btn-danger {color:var(--danger);border-color:var(--danger)}
+    .btn-wide{width:100%}
+    .label-line {display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0 0 9px}
+    .label-line label {font-weight:600;font-size:13px}
+    .readout {color:var(--accent);font-size:13px;font-variant-numeric:tabular-nums}
+    .slider {width:100%;accent-color:var(--accent);cursor:pointer;margin:0;display:block;height:21px}
+    .control {margin:0 0 19px}
+    .control:last-child {margin-bottom:0}
+    .control select {margin-top:6px}
+    .option-note {font-size:12px;color:var(--muted);margin:-6px 0 14px}
+    .toggle-box {display:flex;align-items:center;gap:9px;font-size:13px;color:var(--ink);margin:13px 0 4px}
+    .toggle-box input {accent-color:var(--accent);width:18px;height:18px}
+    .signal-tag {color:var(--muted);font-size:12px;line-height:1.5;margin-top:12px}
+    .grid-divider {border:0;border-top:1px solid var(--line);margin:18px 0}
+    .tools {margin-top:14px;display:grid;grid-template-columns:1.5fr 1fr;gap:14px}
+    .presets {display:flex;gap:8px;flex-wrap:wrap;margin-bottom:21px}
+    .preset {border:1px solid #596464;background:var(--panel2);color:var(--ink);font-size:12px;padding:8px 11px}
+    .preset.active {border-color:var(--accent);background:#303f2a;color:#e5f7d1}
+    .effect-layout {display:grid;grid-template-columns:1fr 1fr;gap:0 23px}
+    .effects-block {border-top:1px solid var(--line);padding-top:16px}
+    .effects-block .smallcaps {margin-bottom:13px;display:block}
+    input[type=file] {display:none}
+    .file-label {display:inline-block;cursor:pointer;border:1px solid #596464;background:var(--panel2);padding:10px 14px;font-size:13px;border-radius:var(--radius)}
+    .file-label:hover {border-color:#c2ceca}
+    audio.native {width:100%;margin:16px 0 0;display:block;height:48px}
+    #songName {word-break:break-word;margin-top:9px;color:var(--muted);font-size:12px}
+    .readme {display:grid;gap:13px;font-size:13px;color:var(--muted);margin-top:12px}
+    .readme strong {color:var(--ink)}
+    .callout {font-size:13px;min-height:36px;color:var(--muted);margin-top:13px}
+    .callout.error{color:var(--danger)}
+    .callout.success{color:var(--accent)}
+    .mute {border:1px solid var(--danger);color:var(--danger);background:#362527}
+    .mute:hover:not(:disabled) {background:#502d2f}
+    .monitor-help {font-size:12px;color:var(--muted);margin-top:11px}
+    .foot {border-top:1px solid var(--line);padding-top:18px;margin-top:24px;color:var(--muted);font-size:12px;display:flex;justify-content:space-between;gap:14px}
+    .toggle-row{display:flex;align-items:center;gap:9px;margin-top:13px;font-size:12px;color:var(--muted)}
+    .toggle-row input{accent-color:var(--accent);width:17px;height:17px}
+    .hidden {display:none!important}
+    kbd {border:1px solid #62706e;padding:1px 5px;font:inherit;font-size:11px}
+    .signal-guide{margin:6px 0 0;display:flex;gap:9px;align-items:center;color:var(--muted);font-size:12px;background:var(--panel2);padding:10px 12px}
+    .signal-lamp{height:8px;width:8px;border-radius:50%;background:#738280;flex-shrink:0}
+    .signal-lamp.ok{background:var(--accent)}.signal-lamp.warn{background:var(--warning)}.signal-lamp.hot{background:var(--danger)}
+    .ends{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:1px}
+    .preset-hint{font-size:11px;color:var(--muted);align-self:center;padding-left:3px}
+    .save-tools{border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap;padding-top:17px;margin-top:8px}
+    .btn-small{font-size:12px;min-height:37px;padding:7px 10px}
+    .record-heading{font-weight:650;font-size:14px}
+    .record-clock{color:var(--muted);font-variant-numeric:tabular-nums;font-size:13px}
+    .record-clock.active{color:var(--danger)}
+    .take-panel{display:grid;gap:10px;margin-top:15px}.take-panel audio{width:100%}
+    .download{text-decoration:none;display:inline-block;text-align:center}
+    .btn.recording{border-color:var(--danger);color:var(--danger)}
+    .track-tools{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:15px}
+    .tempo-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:9px 0 13px}
+    .tempo-tools input[type=number]{width:85px;background:var(--panel2);color:var(--ink);border:1px solid #576365;padding:8px;min-height:40px;border-radius:var(--radius)}
+    .tempo-tools .btn{min-height:40px}
+    .track-chip{font-variant-numeric:tabular-nums;font-size:12px;color:var(--muted)}
+    .quality-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+    .quality-row span{font-size:12px;color:var(--muted)}
+    .record-note{font-size:12px;color:var(--muted);margin-top:9px}
+    .inline-label{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px}
+    .inline-label input{accent-color:var(--accent)}
+    .lab {margin-top:14px}
+    .lab-grid {display:grid;grid-template-columns:1.05fr .95fr;gap:18px}
+    .lab-actions {display:flex;flex-wrap:wrap;gap:8px;margin:15px 0}
+    .lab-actions .btn {font-size:12px}
+    .step-row {display:flex;align-items:flex-start;gap:10px;padding:11px 0;border-bottom:1px solid var(--line)}
+    .step-row:last-child {border-bottom:0}
+    .step-num {font-size:11px;font-weight:800;flex:0 0 22px;height:22px;display:grid;place-items:center;background:var(--panel2);border:1px solid var(--line);color:var(--accent)}
+    .step-text {font-size:13px;color:var(--muted)}
+    .step-text strong {display:block;color:var(--ink);font-size:13px;font-weight:650}
+    .lab-result {border:1px solid var(--line);background:var(--panel2);padding:12px;font-size:13px;min-height:60px}
+    .measure-stats {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
+    .measure-stats > div {background:#12191b;padding:10px;border:1px solid var(--line)}
+    .measure-stats strong {display:block;font-size:17px;font-variant-numeric:tabular-nums;margin-top:3px}
+    .lab-info {font-size:12px;color:var(--muted)}
+    .lab-info code {font:inherit;color:var(--ink)}
+    .meter-signal.warn {color:var(--warning)}
+    .meter-signal.danger {color:var(--danger)}
+    .mute-alert {color:var(--danger);font-weight:600}
+    @media(max-width:760px) { .lab-grid {grid-template-columns:1fr} }
+    @media(max-width:760px) { .intro{align-items:flex-start;flex-direction:column} .intro aside{text-align:left} .grid,.tools {grid-template-columns:1fr} .shell{padding:0 14px 40px} header{padding:19px 0} .brand strong {font-size:18px} .card{padding:18px} }
+    @media(max-width:420px) { .track-tools{grid-template-columns:1fr}  .effect-layout{grid-template-columns:1fr} .brand small{display:none} .card-head {margin-bottom:16px} .monitor{flex-wrap:wrap} }
+
+    /* v0.9: compact, dual-path signal and vocal dynamics tools. */
+    .signal-meters{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}
+    .signal-meters .meter-row{margin-top:6px;gap:9px}
+    .signal-meters .meter-title{font-size:11px}
+    .signal-meters output{min-width:55px}
+    .signal-advice{margin:11px 0 0;font-size:12px;color:var(--muted);min-height:20px}
+    .signal-advice.warn{color:var(--warning)}
+    .vocal-level-tools{margin-top:14px;border:1px solid var(--line);padding:13px;background:#151e1f}
+    .vocal-level-tools .btn{margin-top:10px}
+    .vocal-level-tools p{font-size:12px;color:var(--muted)}
+    .latency-check{border-top:1px solid var(--line);margin-top:16px;padding-top:13px}
+    .latency-check ol{margin:8px 0;padding-left:20px;color:var(--muted);font-size:12px}
+    .latency-check li{margin:5px 0}
+    @media(max-width:420px){.signal-meters{grid-template-columns:1fr}}
+    /* v0.9: integrated practice/editor UI, same square-edged visual language. */
+    .loop-bar{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:15px;border:1px solid #3b4a45;padding:9px 11px;background:#141c1e}
+    .loop-bar .stage-eyebrow{margin-right:7px;white-space:nowrap}
+    .loop-bar .btn{min-height:32px;padding:5px 9px}
+    .loop-bar .active-loop{background:#33432e;border-color:var(--accent);color:var(--accent)}
+    .loop-status{font:12px/1.35 system-ui,sans-serif;color:var(--muted);flex:1;min-width:160px;font-variant-numeric:tabular-nums}
+    .studio{margin-top:14px}
+    .studio-grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(280px,.9fr);gap:24px}
+    .studio-pane{min-width:0}
+    .studio-pane+.studio-pane{border-left:1px solid var(--line);padding-left:24px}
+    .studio-title{display:flex;align-items:start;justify-content:space-between;gap:12px;margin-bottom:14px}
+    .studio-input,.lyric-text,.lyric-time,.bulk-editor textarea{background:#11191b;border:1px solid #566363;color:var(--ink);min-height:35px;padding:7px 9px;border-radius:var(--radius);min-width:0}
+    .studio-input{width:100%;margin-bottom:11px}
+    .studio-toolbar,.practice-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin:10px 0}
+    .studio-toolbar .btn,.practice-actions .btn{min-height:36px}
+    .editor-scroll{max-height:410px;min-height:84px;overflow:auto;border:1px solid var(--line);background:#12191b;margin:10px 0 0}
+    .lyric-edit-row{display:grid;grid-template-columns:27px 86px minmax(0,1fr);gap:6px;align-items:center;padding:7px;border-bottom:1px solid #323e40}
+    .lyric-edit-row:last-child{border-bottom:0}
+    .lyric-edit-row.selected{background:#2d4032}
+    .lyric-number{font-size:11px;color:var(--muted);padding:0 4px;background:none;border:0;text-align:center;cursor:pointer;min-height:35px}
+    .lyric-time{width:100%;font-size:12px;font-variant-numeric:tabular-nums}
+    .lyric-text{width:100%;font-size:13px}
+    .lyric-row-actions{grid-column:2/-1;display:flex;flex-wrap:wrap;gap:5px}
+    .lyric-row-actions button{background:transparent;border:1px solid #465353;color:var(--muted);font-size:11px;padding:3px 7px;min-height:28px}
+    .lyric-row-actions button:hover{color:var(--ink);border-color:var(--accent)}
+    .lyric-row-actions .remove-line{color:var(--danger)}
+    .bulk-editor{border-top:1px solid var(--line);margin-top:14px;padding-top:10px}
+    .bulk-editor summary{cursor:pointer;color:var(--accent);font-size:13px;margin-bottom:12px}
+    .bulk-editor textarea{width:100%;resize:vertical;font:13px/1.5 ui-monospace,monospace}
+    .studio-message{font-size:12px;color:var(--muted);margin-top:12px;min-height:28px}
+    .practice-timer{display:flex;align-items:center;gap:15px;background:#141c1e;padding:19px 15px;margin-top:17px;border:1px solid var(--line)}
+    .practice-timer strong{font-size:32px;font-weight:700;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+    .practice-timer span{font-size:12px;color:var(--muted)}
+    .practice-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:15px}
+    .practice-stats>div{background:#141c1e;border:1px solid var(--line);padding:11px}
+    .practice-stats strong{display:block;font-size:20px;margin-top:5px;font-variant-numeric:tabular-nums}
+    .practice-history-title{margin-top:22px;align-items:center}
+    .session-list{padding:0;list-style:none;margin:8px 0 15px;max-height:180px;overflow:auto}
+    .session-list li{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:12px}
+    .session-list li span{color:var(--muted)}
+    .queue-move{min-height:30px;border:1px solid #485656;background:none;color:var(--muted);padding:3px 7px;font-size:12px}
+    .queue-move:disabled{opacity:.2}
+    @media(max-width:800px){.studio-grid{grid-template-columns:1fr}.studio-pane+.studio-pane{border:0;border-top:1px solid var(--line);padding:20px 0 0}}
+    @media(max-width:420px){.lyric-edit-row{grid-template-columns:24px 73px minmax(0,1fr);gap:4px}.lyric-edit-row input{font-size:12px;padding:6px}.loop-status{flex-basis:100%}}
+    /* v0.6: high-contrast performance stage — avoids introducing a second visual system. */
+    .stage{margin:0 0 14px;position:relative;background:#182023;border-color:#60716b;padding:24px 30px 22px}
+    .stage-top{display:flex;align-items:start;justify-content:space-between;gap:16px}
+    .stage-eyebrow{font-size:11px;color:var(--accent);font-weight:750;letter-spacing:.16em;text-transform:uppercase}
+    .stage-title{font-size:clamp(18px,2.6vw,25px);letter-spacing:-.025em;margin:7px 0 0;overflow-wrap:anywhere}
+    .stage-sub{font-size:12px;color:var(--muted);margin-top:3px}
+    .stage-tools{display:flex;align-items:center;gap:9px;flex-shrink:0}
+    .lyrics-screen{min-height:246px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px 8px;text-align:center}
+    .lyric-prev,.lyric-next{font-size:clamp(14px,1.6vw,19px);color:#8a9c9b;max-width:90%;min-height:25px;overflow-wrap:anywhere}
+    .lyric-current{font-size:clamp(25px,3vw,40px);line-height:1.3;font-weight:720;letter-spacing:-.03em;color:#e8f3e0;max-width:900px;min-height:54px;overflow-wrap:anywhere;margin:0;text-wrap:balance}
+    .lyric-current.placeholder{font-size:clamp(17px,2vw,22px);font-weight:500;color:#adbcb5}
+    .stage-bottom{border-top:1px solid #394844;padding-top:18px}
+    .stage-controls{display:flex;gap:10px;align-items:center;margin-bottom:15px}
+    .stage-play{min-width:102px;background:var(--accent);color:#172018;border-color:var(--accent)}
+    .stage-controls .btn{padding:8px 15px;min-height:41px}
+    .stage-hint{font-size:12px;color:var(--muted);margin-left:auto}
+    .stage-timeline{display:flex;gap:15px;align-items:center}
+    .stage-timeline input{flex:1;min-width:50px}
+    .stage-time{font-variant-numeric:tabular-nums;color:var(--muted);font-size:12px;white-space:nowrap}
+    .stage-advanced{display:flex;align-items:center;flex-wrap:wrap;gap:12px 20px;margin-top:14px}
+    .stage-advanced .inline-label{color:var(--ink)}
+    .offset-wrap{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted);flex:1;min-width:240px;max-width:340px}
+    .offset-wrap .slider{width:115px;flex:1}
+    .offset-wrap output{color:var(--accent);min-width:57px;text-align:right;font-variant-numeric:tabular-nums}
+    .queue-top{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+    .queue-summary{font-size:12px;color:var(--muted);margin:9px 0 0}
+    .queue-list{list-style:none;margin:12px 0 0;padding:0;border:1px solid var(--line);max-height:220px;overflow:auto}
+    .queue-list:empty{display:none}
+    .queue-item{display:flex;gap:7px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--line)}
+    .queue-item:last-child{border-bottom:0}
+    .queue-item.current{background:#2a3a30}
+    .queue-play{min-width:0;flex:1;background:none;border:0;padding:5px 2px;text-align:left;color:var(--ink);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .queue-item.current .queue-play{color:var(--accent);font-weight:700}
+    .queue-play:hover{text-decoration:underline}
+    .queue-lyric-indicator{font-size:10px;color:var(--muted);white-space:nowrap}
+    .queue-remove{min-height:30px;border:1px solid #4b5957;background:transparent;color:var(--muted);padding:2px 8px;font-size:11px}
+    .lyrics-upload{margin-top:11px;display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+    .lyrics-upload .help{margin:0;flex:1;min-width:150px}
+    .stage.focus-mode{position:fixed;inset:0;z-index:2000;margin:0;border:0;border-radius:0;padding:clamp(18px,4vh,44px) clamp(15px,4vw,65px);display:flex;flex-direction:column;background:#101819;overflow:auto;max-height:100dvh}
+    .stage.focus-mode .lyrics-screen{flex:1;min-height:170px}
+    .stage.focus-mode .lyric-current{font-size:clamp(31px,5vw,77px);max-width:1200px}
+    .stage.focus-mode .lyric-prev,.stage.focus-mode .lyric-next{font-size:clamp(15px,2.4vw,26px)}
+    .stage.focus-mode .stage-bottom{width:100%;max-width:1180px;margin:0 auto}
+    body.in-focus{overflow:hidden}
+    @media(max-width:760px){.stage{padding:17px 15px}.stage-top{flex-wrap:wrap}.stage-tools{width:100%}.stage-hint{display:none}.stage-timeline{gap:7px}.stage-controls{gap:7px}.stage-controls .btn{padding:7px 10px}.stage-time{font-size:11px}.lyrics-screen{min-height:210px}}
+    @media(max-width:420px){.stage-advanced{display:block}.offset-wrap{margin-top:10px;min-width:0;max-width:none}.stage.focus-mode .lyrics-screen{min-height:200px}}
+    @media(prefers-reduced-motion: reduce){.meter-fill{transition:none}html{scroll-behavior:auto}}
+    /* v1.0: guided setup and hardware release qualification. */
+    .readiness{margin-bottom:14px;background:#172021;border:1px solid #455551;padding:13px 16px}
+    .readiness-head{display:flex;gap:12px;align-items:center;justify-content:space-between;font-size:12px}
+    .readiness-head strong{font-size:11px;letter-spacing:.12em;color:var(--accent)}
+    .readiness-head span{color:var(--muted)}
+    .readiness-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:10px}
+    .readiness-item{font-size:11px;color:var(--muted);padding:6px 8px;border:1px solid #3e4c4b;background:#111719;overflow-wrap:anywhere}
+    .readiness-item.ok{color:var(--accent);border-color:#4b6543}
+    .readiness-item.warn{color:#f6d49e;border-color:#786547}
+    .readiness-help{font-size:12px;color:var(--muted);margin-top:10px}
+    .hardware-qa{margin-top:14px}
+    .hardware-qa summary{cursor:pointer;font-size:15px;font-weight:700;display:flex;align-items:center;gap:15px;justify-content:space-between}
+    .hardware-qa summary::marker{color:var(--accent)}
+    .hardware-checks{display:grid;gap:8px;margin:16px 0 12px}
+    .hardware-checks label{display:flex;align-items:start;gap:10px;padding:8px;background:#151b1d;font-size:13px}
+    .hardware-checks input{accent-color:var(--accent);margin-top:4px}
+    .readiness-result{font-size:12px;color:var(--muted)}
+    @media(max-width:760px){.readiness-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:420px){.readiness-head{align-items:flex-start;flex-direction:column;gap:4px}.readiness-grid{grid-template-columns:1fr}}
+    /* v0.9: compact performance controls and explicit recovery state. */
+    .recovery-banner{display:flex;align-items:center;justify-content:space-between;gap:16px;border:1px solid var(--warning);background:#30271c;padding:14px 17px;margin:0 0 14px}
+    .recovery-banner strong{font-size:13px;color:#f6d49e}
+    .recovery-banner p{font-size:12px;color:#dfc9ab;margin-top:4px}
+    .recovery-banner .btn{flex-shrink:0;border-color:#b99c65}
+    .performance-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:18px;border:1px solid #40514b;padding:10px;background:#121a1b}
+    .performance-state{font-size:12px;color:var(--muted);margin-right:auto;min-width:170px}
+    .performance-state.live{color:var(--accent)}
+    .performance-state.warning{color:var(--warning)}
+    .performance-bar .btn{min-height:36px;padding:7px 11px}
+    .performance-bar .btn-danger{background:#332122}
+    .stage.focus-mode .performance-bar{width:100%;max-width:1180px;margin-left:auto;margin-right:auto}
+    @media(max-width:600px){.recovery-banner{align-items:stretch;flex-direction:column}.recovery-banner .btn{align-self:flex-start}.performance-state{flex-basis:100%;margin-right:0}.performance-bar .btn{flex:1}}
+  </style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div class="brand"><strong>ROOMTONE</strong><small>Personal karaoke studio / v1.0</small></div>
+    <div class="status" role="status"><span id="dot" class="dot"></span><span id="status">NOT CONNECTED</span></div>
+  </header>
+  <div class="intro">
+    <div><h1>Your microphone. Your speakers.<br>Just sing.</h1><p>Your QuadCast and Pebble V3, with a lyrics editor, looped practice sections and mixed recordings. Everything stays on this device.</p></div>
+    <aside>No accounts. No uploads.<br>Works offline after loading.</aside>
+  </div>
+  <div class="notice"><span class="symbol" aria-hidden="true">!</span><div><strong>Speakers can cause feedback.</strong> Start at low volume. Voice monitoring is OFF until you enable it. Press <strong>Esc</strong> at any time to mute your microphone's speaker output. A limiter cannot guarantee prevention of acoustic feedback.</div></div>
+  <section class="readiness" aria-label="Quick setup status">
+    <div class="readiness-head"><strong>QUICK SETUP</strong><span id="readinessSummary" role="status" aria-live="polite">Microphone and song not started</span></div>
+    <div class="readiness-grid">
+      <span id="readyMic" class="readiness-item">01 · Microphone off</span>
+      <span id="readyOut" class="readiness-item">02 · Speaker: Windows default</span>
+      <span id="readySong" class="readiness-item">03 · No backing track</span>
+      <span id="readyMonitor" class="readiness-item">04 · Voice monitoring muted</span>
+    </div>
+    <p class="readiness-help">Start microphone → check the raw meter → load a track → optionally hear your voice through Pebbles at low volume. Recording works even with speaker monitoring muted.</p>
+  </section>
+  <div id="recoveryBar" class="recovery-banner hidden" role="alert">
+    <div><strong>Audio needs attention</strong><p id="recoveryMessage">A device or playback issue interrupted audio. Speaker monitoring is muted.</p></div>
+    <button id="recoverBtn" class="btn btn-small" type="button">Reconnect audio</button>
+  </div>
+  <section class="stage card" id="stage" aria-label="Karaoke performance stage">
+    <div class="stage-top">
+      <div><span class="stage-eyebrow">Now singing / Stage</span><h2 class="stage-title" id="stageTitle">No song loaded</h2><p class="stage-sub" id="stageSub">Add an audio track and an optional matching .lrc lyrics file to get started.</p></div>
+      <div class="stage-tools"><button id="jumpToStudio" class="btn btn-small" type="button">Lyrics studio ↓</button><button id="stageFocus" class="btn btn-small" type="button" aria-pressed="false">Focus mode</button></div>
+    </div>
+    <div class="performance-bar" aria-label="Quick microphone controls">
+      <span class="performance-state" id="stageVoiceState" role="status">Microphone off · live monitoring muted</span>
+      <button id="stageMic" class="btn btn-small" type="button">Start microphone</button>
+      <button id="stageMonitor" class="btn btn-small" type="button" disabled>Hear voice</button>
+      <button id="stageDry" class="btn btn-small" type="button" aria-pressed="false">Dry voice</button>
+      <button id="stagePanic" class="btn btn-small btn-danger" type="button">Mute now · Esc</button>
+    </div>
+    <div class="lyrics-screen" id="lyricView" aria-label="Synchronized lyrics" aria-live="off">
+      <p id="lyricPrev" class="lyric-prev"></p><p id="lyricCurrent" class="lyric-current placeholder">Your lyrics will appear here.</p><p id="lyricNext" class="lyric-next"></p>
+    </div>
+    <div class="stage-bottom">
+      <div class="stage-controls">
+        <button id="stagePrev" class="btn" type="button" disabled aria-label="Previous song">Previous</button>
+        <button id="stagePlay" class="btn stage-play" type="button" disabled>Play</button>
+        <button id="stageNext" class="btn" type="button" disabled aria-label="Next song">Next</button>
+        <span class="stage-hint">Space = play / pause · Esc = emergency mute</span>
+      </div>
+      <div class="stage-timeline"><input id="stageSeek" class="slider" type="range" min="0" max="1000" step="1" value="0" disabled aria-label="Song playback position"><output id="stageTime" class="stage-time">00:00 / 00:00</output></div>
+      <div class="loop-bar" aria-label="A–B practice loop">
+        <span class="stage-eyebrow">Practice loop</span>
+        <button id="loopSetA" class="btn btn-small" type="button" disabled>Set A</button>
+        <button id="loopSetB" class="btn btn-small" type="button" disabled>Set B</button>
+        <button id="loopToggle" class="btn btn-small" type="button" disabled aria-pressed="false">Loop OFF</button>
+        <button id="loopClear" class="btn btn-small" type="button" disabled>Clear</button>
+        <span id="loopStatus" class="loop-status" aria-live="polite">Choose a song, then mark A and B.</span>
+      </div>
+      <div class="stage-advanced"><label class="inline-label"><input id="autoNext" type="checkbox" checked> Auto-play next song</label><div class="offset-wrap"><label for="lyricsOffset">Lyrics timing</label><input id="lyricsOffset" type="range" class="slider" min="-2000" max="2000" step="50" value="0" aria-label="Lyrics timing adjustment"><output id="lyricsOffsetValue">0 ms</output></div></div>
+    </div>
+  </section>
+  <section class="grid" aria-label="Audio devices">
+    <div class="card">
+      <div class="card-head"><h2>01 / Microphone</h2><span class="tag">INPUT</span></div>
+      <label class="block" for="inputSelect">Recording device</label>
+      <select id="inputSelect"><option value="">System default microphone</option></select>
+      <p class="help">Choose HyperX QuadCast. Speak into its front, about 10–15 cm away.</p>
+      <div class="signal-meters" aria-label="Audio levels"><div>
+        <div class="meter-title">Raw microphone</div><div class="meter-row"><div class="meter" role="meter" aria-label="Raw microphone level" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="micMeter"><div class="meter-fill" id="micBar"></div></div><output id="micDb">— dB</output></div>
+      </div><div><div class="meter-title">Processed vocal</div><div class="meter-row"><div class="meter" role="meter" aria-label="Processed vocal level" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="processedMeter"><div class="meter-fill" id="processedBar"></div></div><output id="processedDb">— dB</output></div></div></div>
+      <p id="inputHealth" class="signal-advice" aria-live="polite">Raw input readings help distinguish microphone gain from software amplification.</p>
+      <div class="toggle-row"><input id="aec" type="checkbox" checked><label for="aec">Speaker echo cancellation (requires restart if changed)</label></div>
+      <div class="monitor"><button id="startBtn" class="btn btn-main">Start microphone</button><button id="stopBtn" class="btn" disabled>Stop</button></div>
+      <p class="callout" id="inputInfo" aria-live="polite">Start the microphone to check the input meter. Your speakers will stay muted.</p>
+      <div id="signalGuide" class="signal-guide" role="status" aria-live="off"><span class="signal-lamp" id="signalLamp"></span><span id="signalLabel">Sound check will appear after the mic starts.</span></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>02 / Speakers</h2><span class="tag">OUTPUT</span></div>
+      <label class="block" for="outputSelect">Playback device</label>
+      <select id="outputSelect"><option value="">System default speaker</option></select>
+      <p class="help" id="outputHelp">Choose Creative Pebble V3 if listed. Otherwise set Pebble V3 as Windows' default output.</p>
+      <div class="control" style="margin-top:23px">
+        <div class="label-line"><label for="volume">Live voice speaker volume</label><output class="readout" id="volumeValue">8%</output></div>
+        <input id="volume" class="slider" type="range" min="0" max="100" value="8" step="1">
+        <p class="help">This changes the amplified microphone, not the music volume. Start low. Output is automatically faded in and overload-protected.</p>
+      </div>
+      <div class="monitor"><button id="monitorBtn" class="btn btn-main" disabled>Enable voice in speakers</button><button id="panicBtn" class="btn mute" disabled>EMERGENCY MUTE · ESC</button></div>
+      <p class="monitor-help" id="speakerInfo">No microphone audio is being sent to speakers.</p>
+      <p class="monitor-help">If you hear feedback or screeching, press <kbd>Esc</kbd> instantly. Use the QuadCast cardioid pattern, with the speakers aimed away from it.</p>
+    </div>
+  </section>
+  <section class="tools" aria-label="Effects and music">
+    <div class="card">
+      <div class="card-head"><h2>03 / Vocal effects</h2><span class="tag">LIVE</span></div>
+      <div class="presets" aria-label="Effects presets">
+        <button type="button" data-preset="clean" class="preset">Clean</button>
+        <button type="button" data-preset="studio" class="preset">Studio</button>
+        <button type="button" data-preset="karaoke" class="preset active">Karaoke</button>
+        <button type="button" data-preset="hall" class="preset">Hall</button>
+        <span id="presetHint" class="preset-hint">Karaoke sound selected</span>
+      </div>
+      <div class="control">
+        <div class="label-line"><label for="micGain">Mic amplification</label><output class="readout" id="micGainValue">100%</output></div>
+        <input id="micGain" class="slider" type="range" min="20" max="220" value="100" step="5">
+        <p class="help">Leave near 100% initially. Increasing this also amplifies room noise.</p>
+      </div>
+      <div class="control"><label class="block" for="dynamics">Vocal dynamics</label><select id="dynamics"><option value="natural">Natural — minimal compression</option><option value="balanced" selected>Balanced — light vocal compression</option><option value="smooth">Smooth — stronger leveling</option></select><p class="help">Natural preserves dynamics. Balanced reduces peaks without flattening your singing.</p></div>
+      <div class="vocal-level-tools"><p id="gainAdvice">After the sound check, ROOMTONE can suggest a modest software gain adjustment. It cannot fix clipping at the microphone.</p><button id="applyGain" type="button" class="btn btn-small" disabled>Apply suggested gain</button></div>
+      <div class="control" style="margin-top:18px">
+        <div class="label-line"><label for="voiceTone">Voice tone</label><output class="readout" id="voiceToneValue">Balanced</output></div>
+        <input id="voiceTone" class="slider" type="range" min="0" max="100" value="50" step="5">
+        <div class="ends"><span>Warmer</span><span>Brighter</span></div>
+      </div>
+      <div class="effect-layout">
+        <div class="effects-block">
+          <span class="smallcaps">Room sound</span>
+          <div class="control"><div class="label-line"><label for="reverb">Reverb amount</label><output class="readout" id="reverbValue">24%</output></div><input id="reverb" class="slider" type="range" min="0" max="100" value="24"><p class="help">Less is usually more for live singing.</p></div>
+          <div class="control"><label class="block" for="roomSize">Reverb space</label><select id="roomSize"><option value="studio">Studio · short</option><option value="karaoke" selected>Karaoke room · medium</option><option value="hall">Concert hall · long</option></select></div>
+          <div class="control"><div class="label-line"><label for="reverbTone">Room brightness</label><output class="readout" id="reverbToneValue">50%</output></div><input id="reverbTone" class="slider" type="range" min="0" max="100" value="50" step="5"></div>
+        </div>
+        <div class="effects-block">
+          <span class="smallcaps">Repeat sound</span>
+          <div class="control"><div class="label-line"><label for="echo">Echo amount</label><output class="readout" id="echoValue">10%</output></div><input id="echo" class="slider" type="range" min="0" max="100" value="10"><p class="help">Warm, quieter repeats that sit behind your voice.</p></div>
+          <div class="control"><label class="block" for="echoSync">Echo timing</label><select id="echoSync"><option value="manual">Manual · milliseconds</option><option value="quarter">Quarter-note · 1/4</option><option value="dotted">Dotted eighth · 1/8.</option><option value="eighth">Eighth-note · 1/8</option></select></div>
+          <div class="control"><div class="label-line"><label for="echoTime">Echo spacing</label><output class="readout" id="echoTimeValue">280 ms</output></div><input id="echoTime" class="slider" type="range" min="90" max="750" value="280" step="10"></div>
+          <div class="tempo-tools"><label for="tempoBpm" class="inline-label">BPM <input id="tempoBpm" type="number" min="60" max="200" step="1" value="100"></label><button id="tapTempo" class="btn btn-small" type="button">Tap tempo</button><span id="tempoStatus" class="track-chip" aria-live="polite">Tap 3+ times or type BPM</span></div>
+          <div class="control"><div class="label-line"><label for="echoFeedback">Echo repetitions</label><output class="readout" id="echoFeedbackValue">10%</output></div><input id="echoFeedback" class="slider" type="range" min="0" max="35" value="10" step="1"><p class="help">0 = one repeat. More = softer follow-up repeats.</p></div>
+        </div>
+      </div>
+      <label class="toggle-box"><input id="clarity" type="checkbox"> Vocal clarity — gently lower echo while singing</label>
+      <label class="toggle-box"><input id="compareDry" type="checkbox"> Compare dry voice — temporarily bypass both effects</label>
+      <div class="save-tools"><button type="button" class="btn btn-small" id="saveSound">Save my sound</button><button type="button" class="btn btn-small" id="loadSound">Load saved sound</button><button type="button" class="btn btn-small" id="resetSound">Reset effects</button></div>
+      <p class="signal-tag">Start with <strong>Studio</strong> for subtle reverb. Use <strong>Compare dry voice</strong> to verify that the effects improve rather than obscure your singing. Saved settings stay in this browser.</p>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>04 / Backing track</h2><span class="tag">OPTIONAL</span></div>
+      <div class="queue-top"><label class="file-label" for="songFile">+ Add songs to queue</label><input id="songFile" type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.flac" multiple><button id="clearQueue" class="btn btn-small" type="button" disabled>Clear queue</button></div>
+      <p id="songName">No backing track loaded</p>
+      <p id="queueSummary" class="queue-summary">Select multiple audio files. Songs remain on your device and are not uploaded.</p>
+      <ol id="trackQueue" class="queue-list" aria-label="Queued songs"></ol>
+      <div class="lyrics-upload"><label class="file-label" for="lrcFile">+ Add synced lyrics (.lrc)</label><input id="lrcFile" type="file" accept=".lrc,text/plain" multiple><p id="lyricsInfo" class="help">Select matching .lrc files for songs, or attach one to the active track.</p></div>
+      <audio id="songPlayer" class="native hidden" controls preload="metadata"></audio>
+      <div class="track-tools">
+        <div class="control"><div class="label-line"><label for="musicVolume">Backing track volume</label><output id="musicVolumeValue" class="readout">70%</output></div><input id="musicVolume" class="slider" type="range" min="0" max="100" value="70"></div>
+        <div class="control"><label class="block" for="songSpeed">Practice speed</label><select id="songSpeed"><option value="0.75">0.75× · slower</option><option value="0.9">0.90×</option><option value="1" selected>1.00× · original</option><option value="1.1">1.10×</option></select></div>
+      </div>
+      <div class="quality-row"><span id="audioLatency">Latency: measured by your device and browser</span><button id="songRestart" type="button" class="btn btn-small" disabled>Restart song</button></div>
+      <p class="help" id="speedNote">Playback speed attempts to preserve pitch where the browser supports it. Songs use the same audio engine as the microphone; external YouTube audio cannot be included in recordings.</p>
+      <hr class="grid-divider">
+      <div class="record-box">
+        <div class="label-line"><span class="record-heading">Record a vocal take</span><span class="record-clock" id="recordClock">00:00</span></div>
+        <p class="help">Record your processed vocal alone or mix it with the loaded track. Voice speaker monitoring can remain muted.</p>
+        <label class="block" for="recordMode" style="margin-top:14px">Recording includes</label>
+        <select id="recordMode"><option value="mix" selected>Voice + local backing track</option><option value="voice">Processed voice only</option></select>
+        <p id="recordGuide" class="record-note">Load an audio file to make a complete karaoke recording. YouTube audio cannot be captured.</p>
+        <div class="control" style="margin-top:14px"><div class="label-line"><label for="recordSync">Recorded take: track/voice timing</label><output class="readout" id="recordSyncValue">0 ms</output></div><input id="recordSync" type="range" class="slider" min="-200" max="200" step="10" value="0"><div class="ends"><span>Voice later</span><span>Track later</span></div><p class="help">For downloaded recordings only. If vocals sound early, move toward “Voice later”; if the backing track sounds early, move toward “Track later”. Does not change live-speaker delay.</p></div>
+        <div class="monitor"><button id="recordBtn" type="button" class="btn" disabled>● Start recording</button><button id="recordAndPlay" type="button" class="btn" disabled>Record + play song</button><button id="recordStopBtn" type="button" class="btn" disabled>Stop take</button></div>
+        <div id="takePanel" class="hidden take-panel"><audio id="takePlayer" controls preload="metadata"></audio><a id="takeDownload" class="btn download" download="roomtone-vocal.webm">Download vocal take</a></div>
+      </div>
+      <hr class="grid-divider">
+      <p class="help">Or play <a href="https://www.youtube.com/results?search_query=karaoke+instrumental" target="_blank" rel="noopener noreferrer">YouTube karaoke ↗</a> separately. The browser cannot mix protected or cross-origin tab audio into downloaded recordings.</p>
+      <div class="readme"><p><strong>First test:</strong> Start the mic and check the VOICE meter without monitoring. If the meter responds from 10–15 cm, the mic is working.</p><p><strong>Second test:</strong> Turn Pebble volume down, enable speaker monitoring, and slowly increase it. Keep the speakers behind the microphone's less-sensitive side.</p><p><strong>Sound tip:</strong> Use Studio reverb and little or no echo first. Speaker echo cancellation can sometimes change vocal tone; only compare it OFF at very low volume.</p></div>
+    </div>
+  </section>
+  <section class="card lab" aria-label="Guided sound check and latency">
+    <div class="card-head"><h2>05 / Sound check &amp; latency</h2><span class="tag">CALIBRATION</span></div>
+    <div class="lab-grid">
+      <div>
+        <div class="step-row"><span class="step-num">1</span><div class="step-text"><strong>Measure your room</strong>Start the QuadCast, keep voice speaker monitoring OFF, stay silent, then measure your room for 3 seconds.</div></div>
+        <div class="step-row"><span class="step-num">2</span><div class="step-text"><strong>Measure normal singing</strong>From 10–15 cm away, sing at typical volume for 4 seconds. We compare it to the noise floor.</div></div>
+        <div class="step-row"><span class="step-num">3</span><div class="step-text"><strong>Bring up the speakers carefully</strong>Start around 8% voice monitoring, keep the Pebbles quiet, and use Esc if ringing develops.</div></div>
+        <div class="lab-actions"><button id="noiseTest" class="btn" disabled>1 · Measure room noise</button><button id="voiceTest" class="btn" disabled>2 · Measure voice</button><button id="cancelTest" class="btn btn-danger" disabled>Cancel test</button></div>
+        <p id="checkStatus" class="lab-result" aria-live="polite">Start the microphone to run the sound check. These measurements remain in your browser and are not uploaded.</p>
+        <div class="measure-stats"><div><span class="smallcaps">Room noise</span><strong id="noiseResult">—</strong></div><div><span class="smallcaps">Singing</span><strong id="voiceResult">—</strong></div><div><span class="smallcaps">Difference</span><strong id="snrResult">—</strong></div></div>
+      </div>
+      <div>
+        <span class="smallcaps">Audio path diagnostics</span>
+        <p class="lab-info" id="pathInfo" style="margin-top:11px">Audio engine not started. Measured output latency depends on your browser and Windows audio drivers.</p>
+        <p class="lab-info" id="latencyInfo" style="margin-top:13px">Actual microphone-to-speaker delay cannot be measured reliably from browser output-buffer values alone.</p>
+        <div class="latency-check"><span class="smallcaps">Delay troubleshooting</span><ol><li>Use Pebble V3 in USB or 3.5 mm AUX mode, not Bluetooth.</li><li>Close Voicemeeter and other microphone-monitoring tools.</li><li>Try the dry-voice comparison before enabling effects; reverb and echo intentionally create delayed reflections.</li><li>If the raw input is strong but the processed voice is weak, check software gain and the monitoring level separately.</li></ol></div>
+        <hr class="grid-divider">
+        <div class="control"><label class="toggle-box"><input id="overloadGuard" type="checkbox" checked> Auto-mute sustained overload</label><p class="help">Mutes live voice if very high levels persist. It cannot guarantee protection against acoustic feedback. The song keeps playing.</p></div>
+        <div class="control"><label class="toggle-box"><input id="softStart" type="checkbox" checked> Fade in live speaker monitoring</label><p class="help">Prevents abrupt full-level monitoring when you enable your voice.</p></div>
+        <div class="control"><label class="toggle-box"><input id="monitorOnlyTest" type="checkbox"> Dry-only sound check</label><p class="help">Temporarily bypass echo and reverb to compare your microphone's original sound.</p></div>
+        <div class="monitor"><button id="refreshAudioInfo" class="btn btn-small" type="button">Refresh latency details</button></div>
+        <p class="lab-info" style="margin-top:12px">For the lowest practical browser latency, connect Pebble V3 by USB or cable rather than Bluetooth, close Voicemeeter, and use Chrome/Edge. Hardware, acoustic feedback, and operating-system buffering still determine the result.</p>
+      </div>
+    </div>
+  </section>
+  <details class="card hardware-qa" id="hardwareQa">
+    <summary>Release check / QuadCast + Pebble V3 <span class="tag">CHECK ON YOUR PC</span></summary>
+    <p class="help">Automated tests cannot measure your acoustic feedback or round-trip latency. Use this short checklist before treating ROOMTONE as hardware-qualified.</p>
+    <div class="hardware-checks">
+      <label><input type="checkbox" data-qa="input"> Raw mic signal registers from 10–15 cm without clipping</label>
+      <label><input type="checkbox" data-qa="speaker"> Pebble output is correct and voice remains muted until requested</label>
+      <label><input type="checkbox" data-qa="dry"> Dry voice monitoring is usable at low volume without ringing</label>
+      <label><input type="checkbox" data-qa="wet"> Reverb sounds natural; no persistent whistling or repeats growing louder</label>
+      <label><input type="checkbox" data-qa="record"> Downloaded local recording plays with the chosen mix</label>
+    </div>
+    <p class="help">Do not check a box unless you have tested it. If the speaker feedback test fails, leave voice monitoring off; you can still use music playback and record.</p>
+    <div class="monitor"><button id="exportDiagnostics" class="btn btn-small" type="button">Download device report</button><output id="qaStatus" class="readiness-result" aria-live="polite">0 of 5 hardware checks verified</output></div>
+  </details>
+  <section class="card studio" id="lyricsStudio" aria-label="Lyrics editor and practice sessions">
+    <div class="card-head"><h2>06 / Lyrics Studio &amp; practice</h2><span class="tag">LOCAL ONLY</span></div>
+    <div class="studio-grid">
+      <div class="studio-pane">
+        <div class="studio-title"><div><span class="smallcaps">Timed lyrics editor</span><p class="help">Edit every line, stamp a line at the playhead, then export an LRC file.</p></div><button id="exportLrc" class="btn btn-small" disabled>Export .lrc</button></div>
+        <label class="block" for="songTitleEdit">Song title (local display only)</label>
+        <input id="songTitleEdit" type="text" class="studio-input" maxlength="120" placeholder="Load a song to edit" disabled>
+        <div class="studio-toolbar">
+          <button class="btn btn-small" id="addLyricLine" disabled>+ Add line</button>
+          <button class="btn btn-small" id="tapLyricLine" disabled>Stamp selected at playhead</button>
+          <output id="lyricLineCount" class="track-chip">No song selected</output>
+        </div>
+        <div class="editor-scroll" id="lyricEditor" role="group" aria-label="Editable lyric lines"><p class="help">Choose a song from the queue to edit its lyrics.</p></div>
+        <details class="bulk-editor"><summary>Paste lyrics or LRC text</summary>
+          <label for="bulkLyrics" class="block">One lyric line per row, or standard timed .lrc text</label>
+          <textarea id="bulkLyrics" rows="6" placeholder="First lyric line&#10;Second lyric line&#10;Third lyric line" spellcheck="false"></textarea>
+          <p class="help">Plain lines get temporary 3-second spacing starting at the playhead. You can stamp each line while the song plays. Replacing lyrics overwrites the selected song’s current editor lines.</p>
+          <button id="replaceLyrics" class="btn btn-small" disabled>Replace selected song lyrics</button>
+        </details>
+        <p id="editorStatus" class="studio-message" role="status" aria-live="polite">Lyrics and title edits are saved locally for the audio file's fingerprint. Audio files are never stored.</p>
+      </div>
+      <div class="studio-pane">
+        <span class="smallcaps">Practice sessions</span>
+        <p class="help">Track active playback time and completed A–B repeats. Pause whenever you need a break.</p>
+        <div class="practice-timer"><strong id="practiceClock">00:00</strong><span id="practiceLabel">Not started</span></div>
+        <div class="practice-actions"><button class="btn btn-main btn-small" id="practiceStart">Start session</button><button class="btn btn-small" id="practicePause" disabled>Pause</button><button class="btn btn-small" id="practiceFinish" disabled>Finish &amp; save</button></div>
+        <div class="practice-stats"><div><span class="smallcaps">Loop repetitions</span><strong id="practiceLoops">0</strong></div><div><span class="smallcaps">Songs practiced</span><strong id="practiceTracks">0</strong></div></div>
+        <div class="studio-title practice-history-title"><span class="smallcaps">Recent sessions</span><button id="exportSessions" class="btn btn-small" type="button">Export JSON</button></div>
+        <ol id="sessionHistory" class="session-list" aria-label="Saved practice sessions"></ol>
+        <button id="clearSessions" class="btn btn-small" type="button">Clear history</button>
+        <p class="help">Session logs store dates, durations, song titles, and loop counts in this browser. No vocals or backing-track files are saved automatically.</p>
+      </div>
+    </div>
+  </section>
+  <div id="message" class="callout" role="status" aria-live="polite"></div>
+  <footer class="foot"><span>ROOMTONE v1.0 · Local processing · No analytics</span><span>Esc = emergency mute · Chrome or Edge recommended</span></footer>
+</div>
+<audio id="voicePlayback" autoplay playsinline class="hidden"></audio>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const ui = Object.fromEntries(['inputSelect','outputSelect','aec','startBtn','stopBtn','monitorBtn','panicBtn','inputInfo','speakerInfo','micBar','micDb','micMeter','processedBar','processedDb','processedMeter','inputHealth','volume','micGain','dynamics','voiceTone','reverb','reverbTone','roomSize','echo','echoTime','echoFeedback','echoSync','tempoBpm','tapTempo','tempoStatus','clarity','compareDry','volumeValue','micGainValue','voiceToneValue','reverbValue','reverbToneValue','echoValue','echoTimeValue','echoFeedbackValue','status','dot','outputHelp','songFile','songName','songPlayer','trackQueue','queueSummary','clearQueue','lrcFile','lyricsInfo','stage','stageTitle','stageSub','stageFocus','stagePrev','stagePlay','stageNext','stageSeek','stageTime','lyricPrev','lyricCurrent','lyricNext','autoNext','lyricsOffset','lyricsOffsetValue','speedNote','musicVolume','musicVolumeValue','songSpeed','songRestart','audioLatency','recordMode','recordGuide','voicePlayback','message','signalGuide','signalLamp','signalLabel','presetHint','saveSound','loadSound','resetSound','recordBtn','recordAndPlay','recordStopBtn','recordClock','takePanel','takePlayer','takeDownload','recordSync','recordSyncValue','noiseTest','voiceTest','cancelTest','checkStatus','noiseResult','voiceResult','snrResult','gainAdvice','applyGain','overloadGuard','softStart','monitorOnlyTest','refreshAudioInfo','pathInfo','latencyInfo','jumpToStudio','loopSetA','loopSetB','loopToggle','loopClear','loopStatus','lyricsStudio','songTitleEdit','exportLrc','lyricEditor','lyricLineCount','addLyricLine','tapLyricLine','bulkLyrics','replaceLyrics','editorStatus','practiceStart','practicePause','practiceFinish','practiceClock','practiceLabel','practiceLoops','practiceTracks','sessionHistory','exportSessions','clearSessions','recoveryBar','recoveryMessage','recoverBtn','stageVoiceState','stageMic','stageMonitor','stagePanic','stageDry','readyMic','readyOut','readySong','readyMonitor','readinessSummary','exportDiagnostics','qaStatus'].map(id => [id,$(id)]));
+let ctx = null, engine = null, stream = null, nodes = null, meterAnimation = null, speakerOn = false, songUrl = null;
+let queue = [], activeTrack = -1, lyricFrame = null, lyricIndex = -999, recordingSongEnd = false, trackGeneration = 0;
+let tempoTaps = [];
+let soundCheck = null, noiseMeasurement = null, voiceMeasurement = null, suggestedGain = null;
+let overloadStart = 0;
+let lastOutputId = '', lastInputTrackId = '', micWasLost = false, recovering = false, shutdownInProgress = false;
+let deviceRefreshPending = null;
+let hardwareChecks = {input:false,speaker:false,dry:false,wet:false,record:false};
+function updateReadiness(){
+  const mic=!!nodes && !!stream?.getAudioTracks()?.some(t=>t.readyState==='live');
+  const selected=ui.outputSelect.selectedOptions?.[0]?.textContent || 'Windows default';
+  ui.readyMic.textContent=mic?'01 · Microphone connected':'01 · Microphone off';
+  ui.readyMic.className='readiness-item'+(mic?' ok':'');
+  ui.readyOut.textContent='02 · '+(ui.outputSelect.value?selected:'Windows default output');
+  ui.readyOut.className='readiness-item'+(ui.outputSelect.value?' ok':'');
+  ui.readySong.textContent=songUrl?'03 · Backing track loaded':'03 · No backing track';
+  ui.readySong.className='readiness-item'+(songUrl?' ok':'');
+  ui.readyMonitor.textContent=speakerOn?'04 · Live voice ON':'04 · Live voice muted';
+  ui.readyMonitor.className='readiness-item'+(speakerOn?' warn':' ok');
+  ui.readinessSummary.textContent=mic?(songUrl?'Ready for karaoke · monitoring optional':'Microphone ready · add a song'):'Start your QuadCast microphone';
+}
+function updateQaStatus(){
+  const n=Object.values(hardwareChecks).filter(Boolean).length;
+  ui.qaStatus.textContent=n+' of 5 hardware checks verified';
+}
+
+function updatePerformanceBar(){
+  const active=!!nodes;
+  const healthy=active && ctx?.state==='running' && stream?.getAudioTracks()[0]?.readyState==='live';
+  ui.stageMic.textContent=active?'Stop microphone':'Start microphone';
+  ui.stageMic.disabled=starting || recovering;
+  ui.stageMonitor.disabled=!healthy || recovering;
+  ui.stageMonitor.textContent=speakerOn?'Mute voice':'Hear voice';
+  ui.stageVoiceState.textContent=!active?'Microphone off · live monitoring muted':
+    !healthy?'Audio interrupted · live voice muted':
+    speakerOn?'Microphone live · voice in speakers':'Microphone live · speaker monitoring muted';
+  ui.stageVoiceState.className='performance-state'+(speakerOn?' live':(!healthy && active?' warning':''));
+  ui.stageMonitor.setAttribute('aria-pressed',String(speakerOn));
+  updateReadiness();
+}
+function needsRecovery(message){
+  monitorMute();
+  if(recordSession){stopRecording();message+=' Any in-progress recording was stopped to avoid a silent or incomplete take.';}
+  ui.recoveryMessage.textContent=message;
+  ui.recoveryBar.classList.remove('hidden');
+  updatePerformanceBar();
+}
+function clearRecovery(){ui.recoveryBar.classList.add('hidden');updatePerformanceBar();}
+function onContextState(){
+  if(shutdownInProgress || !ctx || !engine)return;
+  if(ctx.state==='suspended' || ctx.state==='interrupted' || ctx.state==='closed'){
+    needsRecovery('Audio playback was '+ctx.state+'. Reconnect it before enabling live speaker monitoring.');
+  } else {updatePerformanceBar();updateAudioDiagnostics();}
+}
+
+const percentile = (arr,p) => {if (!arr.length) return NaN;const sorted=[...arr].sort((a,b)=>a-b);return sorted[Math.min(sorted.length-1,Math.max(0,Math.floor((sorted.length-1)*p)))];};
+const dbText = v => Number.isFinite(v) ? Math.round(v)+' dBFS' : '—';
+function updateTestUi(){
+  const ready=!!nodes && !soundCheck;
+  ui.noiseTest.disabled=!ready;ui.voiceTest.disabled=!ready;
+  ui.applyGain.disabled=!ready || suggestedGain===null || speakerOn;
+  ui.cancelTest.disabled=!soundCheck;
+}
+function cancelSoundCheck(msg){
+  if(!soundCheck)return;
+  soundCheck=null;updateTestUi();
+  ui.checkStatus.textContent=msg||'Sound check cancelled.';
+}
+function beginSoundCheck(kind){
+  if(!nodes||soundCheck)return;
+  if(speakerOn)monitorMute('Speaker monitoring muted for the sound check.');
+  if(kind==='voice')suggestedGain=null;
+  soundCheck={kind,started:performance.now(),samples:[],peaks:[]};
+  ui.checkStatus.textContent=kind==='noise'?'Recording room noise for 3 seconds. Stay silent and keep the Pebbles quiet.':'Recording singing level for 4 seconds. Sing from 10–15 cm at your usual volume.';
+  updateTestUi();
+}
+function finishSoundCheck(test){
+  const usable=test.samples.slice(4);
+  if(usable.length<6){ui.checkStatus.textContent='Not enough samples. Try the measurement again.';updateTestUi();return;}
+  const reading=percentile(usable,test.kind==='noise'?.5:.75);
+  const peak=Math.max(0,...test.peaks);
+  if(test.kind==='noise'){
+    noiseMeasurement=reading;ui.noiseResult.textContent=dbText(reading);
+    ui.checkStatus.textContent='Room measured. Now select “Measure voice” and sing normally.';
+  }else{
+    voiceMeasurement=reading;ui.voiceResult.textContent=dbText(reading);
+    let advice='';
+    if(reading < -38)advice='Your input is quiet. Check QuadCast pickup direction and Windows input volume before increasing software amplification.';
+    else if(reading > -14 || peak>.97) advice='Your signal is very hot. Lower the QuadCast physical gain or Windows input volume to reduce distortion.';
+    else advice='Your singing level is usable. Keep software microphone gain near 100% and monitor at low speaker volume.';
+    if(noiseMeasurement!==null) {
+      const difference=reading-noiseMeasurement;
+      ui.snrResult.textContent=Math.round(difference)+' dB';
+      if(difference<12)advice+=' Voice and background noise are relatively close; reduce speaker or room noise rather than boosting both.';
+    }
+    // Recommendations never turn speaker monitoring on or alter the QuadCast hardware gain.
+    suggestedGain=null;
+    if(peak<.89 && reading < -17 && reading > -44 && (noiseMeasurement===null || reading-noiseMeasurement>=15)){
+      const dbNeeded=Math.max(0,Math.min(4,-23-reading));
+      const proposed=Math.round(Math.min(140,Math.max(60,+ui.micGain.value*Math.pow(10,dbNeeded/20)))/5)*5;
+      if(proposed>+ui.micGain.value){suggestedGain=proposed;}
+    }
+    ui.gainAdvice.textContent=suggestedGain!==null?'Suggested software amplification: '+suggestedGain+'% (maximum +4 dB per sound check). This also raises background noise.':'No gain increase suggested. Fix raw input clipping or room noise at the source; use microphone hardware/Windows input gain where appropriate.';
+    ui.checkStatus.textContent=advice+' (Indicative dBFS values; not a calibrated sound-level meter.)';
+  }
+  updateTestUi();
+}
+function updateAudioDiagnostics(){
+  if(!ctx){ui.pathInfo.textContent='Audio engine not started.';ui.latencyInfo.textContent='Microphone-to-speaker delay cannot be measured accurately from browser buffer numbers.';return;}
+  const base=typeof ctx.baseLatency==='number'?ctx.baseLatency:null;
+  const output=typeof ctx.outputLatency==='number'?ctx.outputLatency:null;
+  const items=['Sample rate '+ctx.sampleRate+' Hz','output path '+(engine?.direct?'direct AudioContext':'compatibility media element')];
+  if(base!==null)items.push('base buffer ~'+Math.round(base*1000)+' ms');
+  if(output!==null)items.push('reported output buffer ~'+Math.round(output*1000)+' ms');
+  ui.pathInfo.textContent=items.join(' · ');
+  ui.latencyInfo.textContent='These are browser-reported output-buffer estimates, NOT measured voice round-trip latency. Microphone capture, DSP, Windows drivers, and speaker connection add additional delay.';
+}
+let starting = false;
+let recordSession = null, recordChunks = [], recordUrl = null, recordTicker = null;
+const LEGACY_SOUND_KEY = 'roomtone:v0.4:user-sound';
+const SAVED_SOUND_KEY = 'roomtone:user-sound:v1';
+const soundControls = ['micGain','dynamics','voiceTone','reverb','roomSize','reverbTone','echo','echoTime','echoFeedback','echoSync','tempoBpm','clarity','recordSync'];
+const presetValues = {
+  clean:   {dynamics:'natural',reverb:0, echo:0, echoTime:280, echoFeedback:0, roomSize:'studio', reverbTone:50, voiceTone:50},
+  studio:  {dynamics:'balanced',reverb:17,echo:0, echoTime:260, echoFeedback:0, roomSize:'studio', reverbTone:45, voiceTone:55},
+  karaoke: {dynamics:'balanced',reverb:24,echo:9, echoTime:280, echoFeedback:10,roomSize:'karaoke', reverbTone:50,voiceTone:55},
+  hall:    {dynamics:'smooth',reverb:35,echo:8, echoTime:350, echoFeedback:12,roomSize:'hall',reverbTone:40,voiceTone:50}
+};
+function info(msg, type='') {ui.message.textContent=msg;ui.message.className='callout '+type;}
+function status(label, live=false) {ui.status.textContent=label;ui.dot.className='dot'+(live?' live':'');}
+function setUiRunning(on) {
+  ui.startBtn.disabled=on || starting;
+  ui.stopBtn.disabled=!on;
+  ui.monitorBtn.disabled=!on;
+  ui.panicBtn.disabled=!on;
+  ui.inputSelect.disabled=on;
+  ui.aec.disabled=on;
+  ui.monitorBtn.textContent = speakerOn ? 'Mute voice in speakers' : 'Enable voice in speakers';
+  ui.recordBtn.disabled=!on || !!recordSession;
+  ui.recordAndPlay.disabled=!on || !!recordSession || !songUrl;
+  ui.recordStopBtn.disabled=!recordSession;
+  updatePerformanceBar();
+}
+function setKnobLabels() {
+  ui.volumeValue.textContent=ui.volume.value+'%';
+  ui.micGainValue.textContent=ui.micGain.value+'%';
+  const tone=Number(ui.voiceTone.value);ui.voiceToneValue.textContent=tone===50?'Balanced':tone<50?'Warm '+(50-tone)*2+'%':'Bright '+(tone-50)*2+'%';
+  ui.reverbValue.textContent=ui.reverb.value+'%';
+  ui.reverbToneValue.textContent=ui.reverbTone.value+'%';
+  ui.echoValue.textContent=ui.echo.value+'%';
+  ui.echoTimeValue.textContent=echoMilliseconds()+' ms';
+  ui.musicVolumeValue.textContent=ui.musicVolume.value+'%';
+  ui.echoFeedbackValue.textContent=ui.echoFeedback.value+'%';
+  const correction=+ui.recordSync.value;ui.recordSyncValue.textContent=(correction>0?'+':'')+correction+' ms';
+}
+function echoMilliseconds(){
+  const bpm=Math.max(60,Math.min(200,Number(ui.tempoBpm.value)||100));
+  const multipliers={quarter:1,dotted:.75,eighth:.5};
+  return ui.echoSync.value==='manual' ? Number(ui.echoTime.value) : Math.round(60000/bpm*multipliers[ui.echoSync.value]);
+}
+function applyControls() {
+  setKnobLabels();
+  if (!nodes || !ctx) return;
+  const t=ctx.currentTime, ramp=(param,value)=>param.setTargetAtTime(value,t,.035);
+  ramp(nodes.micGain.gain, +ui.micGain.value/100);
+  const dynamics={natural:{threshold:-65,ratio:1,knee:0},balanced:{threshold:-24,ratio:1.8,knee:12},smooth:{threshold:-30,ratio:2.6,knee:10}}[ui.dynamics.value];
+  if(dynamics){ramp(nodes.comp.threshold,dynamics.threshold);ramp(nodes.comp.ratio,dynamics.ratio);ramp(nodes.comp.knee,dynamics.knee);}
+  // Gentle opposing shelves: a warmer setting avoids brittle treble, while a
+  // brighter setting removes muddiness. No drastic equalization or hard gating.
+  const color=(+ui.voiceTone.value-50)/50;
+  ramp(nodes.toneLow.gain, -color*3.5);
+  ramp(nodes.toneHigh.gain, color*4);
+  ramp(nodes.reverbLP.frequency, 2500+ (+ui.reverbTone.value/100)*5200);
+  for(const feedback of nodes.echoFeedbacks)ramp(feedback.gain,+ui.echoFeedback.value/100);
+  const bypass=ui.compareDry.checked || ui.monitorOnlyTest.checked;
+  // Sliders represent perceptual wet loudness, not uncalibrated effect-send percentages.
+  const reverbAmount=bypass ? 0 : Math.pow(+ui.reverb.value/100,.95)*.70;
+  const echoAmount=bypass ? 0 : Math.pow(+ui.echo.value/100,1.05)*.62;
+  ramp(nodes.reverbSend.gain, reverbAmount);
+  ramp(nodes.echoSend.gain, echoAmount);
+  updateEchoTiming(echoMilliseconds()/1000);
+  if(speakerOn)ramp(nodes.monitorGain.gain,(+ui.volume.value/100)*.75); // Muting uses a fast dedicated fade.
+  if(engine){
+    ramp(engine.musicGain.gain,+ui.musicVolume.value/100);
+    ramp(engine.recordMusicGain.gain,ui.recordMode.value==='mix'?1:0);
+    const offset=+ui.recordSync.value/1000;
+    ramp(engine.recordMusicDelay.delayTime,Math.max(0,offset));
+    if(nodes?.recordVoiceDelay)ramp(nodes.recordVoiceDelay.delayTime,Math.max(0,-offset));
+  }
+}
+function monitorMute(message) {
+  speakerOn=false;
+  if (nodes && ctx) nodes.monitorGain.gain.setTargetAtTime(0,ctx.currentTime,.008);
+  ui.monitorBtn.textContent='Enable voice in speakers';
+  overloadStart=0;
+  ui.monitorBtn.classList.add('btn-main');
+  ui.speakerInfo.textContent='Voice monitoring is OFF. Music playback is unaffected.';
+  updateTestUi();
+  status(nodes?'MIC LIVE · OUTPUT MUTED':'NOT CONNECTED',!!nodes);
+  updatePerformanceBar();
+  if (message) info(message,'success');
+}
+function stopMeter() {
+  if (meterAnimation!==null) cancelAnimationFrame(meterAnimation);
+  meterAnimation=null;
+  ui.micBar.style.width='0%'; ui.micBar.classList.remove('hot');
+  ui.processedBar.style.width='0%';ui.processedBar.classList.remove('hot');ui.processedDb.textContent='— dB';ui.processedMeter.setAttribute('aria-valuenow','0');
+  ui.micDb.textContent='— dB'; ui.micMeter.setAttribute('aria-valuenow','0');
+  ui.signalLamp.className='signal-lamp';
+  ui.signalLabel.textContent='Sound check will appear after the mic starts.';
+}
+function startMeter() {
+  if (!nodes) return;
+  const buffer=new Float32Array(nodes.rawMeter.fftSize),processed=new Float32Array(nodes.meter.fftSize);
+  let lastGuide=0, smoothedDb=-70;
+  const draw=(frameTime)=>{
+    if (!nodes) return;
+    nodes.rawMeter.getFloatTimeDomainData(buffer);
+    let energy=0, peak=0;
+    for (let i=0;i<buffer.length;i++) {const v=buffer[i];energy+=v*v;peak=Math.max(peak,Math.abs(v));}
+    const rms=Math.sqrt(energy/buffer.length);
+    const db=rms>0.0001 ? Math.max(-70,20*Math.log10(rms)) : -70;
+    const pct=Math.max(0, Math.min(100, (db+60)/60*100));
+    ui.micBar.style.width=pct+'%';
+    ui.micBar.classList.toggle('hot',peak>.85);
+    ui.micDb.textContent=db<=-69?'SILENT':Math.round(db)+' dB';
+    ui.micMeter.setAttribute('aria-valuenow',String(Math.round(pct)));
+    nodes.meter.getFloatTimeDomainData(processed);
+    let processedEnergy=0, processedPeak=0;
+    for(const v of processed){processedEnergy+=v*v;processedPeak=Math.max(processedPeak,Math.abs(v));}
+    const processedRms=Math.sqrt(processedEnergy/processed.length);
+    const processedDb=processedRms>1e-4?Math.max(-70,20*Math.log10(processedRms)):-70;
+    ui.processedBar.style.width=Math.max(0,Math.min(100,(processedDb+60)/60*100))+'%';
+    ui.processedBar.classList.toggle('hot',processedPeak>.92);
+    ui.processedDb.textContent=processedDb<=-69?'SILENT':Math.round(processedDb)+' dB';
+    ui.processedMeter.setAttribute('aria-valuenow',String(Math.round(Math.max(0,Math.min(100,(processedDb+60)/60*100)))));
+    // Slow metering for readable input guidance, without an abrupt noise gate.
+    smoothedDb=smoothedDb*.82+db*.18;
+    if(soundCheck){
+      soundCheck.samples.push(db);soundCheck.peaks.push(peak);
+      const duration=soundCheck.kind==='noise'?3000:4000;
+      if(frameTime-soundCheck.started>=duration){const test=soundCheck;soundCheck=null;finishSoundCheck(test);}
+      else ui.checkStatus.textContent=(soundCheck.kind==='noise'?'Stay silent':'Sing normally')+' · '+Math.max(0,Math.ceil((duration-(frameTime-soundCheck.started))/1000))+' s remaining';
+    }
+    // Sustained, near-full-scale energy can indicate clipping or runaway
+    // feedback. Do not assert we can reliably detect all acoustic feedback.
+    if(speakerOn && ui.overloadGuard.checked && smoothedDb > -10 && peak>.92){
+      if(!overloadStart)overloadStart=frameTime;
+      if(frameTime-overloadStart>=550){monitorMute();info('Live voice auto-muted: sustained high level detected. Lower speaker/QuadCast gain and check for feedback.','error');ui.speakerInfo.textContent='Safety mute: sustained high level. Music continues.';}
+    }else overloadStart=0;
+    if(frameTime-lastGuide>450){
+      lastGuide=frameTime;
+      let label='';let lamp='';
+      if(smoothedDb< -53){label='Very low input. Speak into the front of the mic or check Windows input volume.';lamp='warn';}
+      else if(smoothedDb< -35){label='Quiet input. Move closer (10–15 cm) or raise the QuadCast hardware gain slightly.';lamp='warn';}
+      else if(peak>.94 || smoothedDb> -9){label='Input is hot. Lower the QuadCast gain to avoid distortion.';lamp='hot';}
+      else {label='Healthy voice level. You can enable speaker monitoring at low volume.';lamp='ok';}
+      ui.signalLamp.className='signal-lamp '+lamp;
+      ui.signalLabel.textContent=label;
+      ui.inputHealth.textContent=peak>.97?'Raw mic is near full scale. Reduce QuadCast hardware/Windows gain; software compression cannot repair clipping.':(db<-42?'Raw input is weak. Verify cardioid pickup and front-side speaking position before boosting software gain.':'Input is within a usable range; processing and speaker volume can be adjusted separately.');
+      ui.inputHealth.classList.toggle('warn',peak>.97||db<-42);
+    }
+    if(ctx && nodes) {
+      const talking=ui.clarity.checked ? Math.max(0,Math.min(1,(db+36)/20)) : 0;
+      nodes.reverbDuck.gain.setTargetAtTime(1,ctx.currentTime,.15);
+      nodes.echoDuck.gain.setTargetAtTime(1-talking*.20,ctx.currentTime,.22);
+    }
+    meterAnimation=requestAnimationFrame(draw);
+  };
+  meterAnimation=requestAnimationFrame(draw);
+}
+// Deterministic, spectrally softened, energy-calibrated stereo room impulses.
+// Unlike the old raw random tail, these have a real pre-delay, sparse first
+// reflections and a smooth, increasingly dense, decaying tail.
+const rooms = {
+  studio:  {duration:.72, predelay:.016, tailStart:.042},
+  karaoke: {duration:1.25,predelay:.028, tailStart:.055},
+  hall:    {duration:2.10,predelay:.044, tailStart:.085}
+};
+function seededRandom(seed) {
+  return ()=>{seed ^= seed << 13;seed ^= seed >>> 17;seed ^= seed << 5;return (seed>>>0)/4294967296;};
+}
+function makeRoomIR(ac, room='karaoke') {
+  const cfg=rooms[room]||rooms.karaoke,sr=ac.sampleRate;
+  const len=Math.ceil(sr*(cfg.duration+cfg.predelay+.03));
+  const buffer=ac.createBuffer(2,len,sr);
+  for(let c=0;c<2;c++) {
+    const sample=buffer.getChannelData(c);
+    const rand=seededRandom((0x47a4c01 ^ (c+1)*7919 ^ Math.floor(cfg.duration*1e5))>>>0);
+    const reflections=[
+      [0,.22],[.014,.17],[.030,.13],[.048,.11],[.072,.08],[.103,.065]
+    ];
+    for(const [offset,gain] of reflections) {
+      const position=Math.floor((cfg.predelay+offset+(c? .003:0))*sr);
+      if(position<sample.length) sample[position]+=gain*(c?.88:1);
+    }
+    // Tonally softened late reflections; scaled to consistent energy regardless
+    // of room size so changing space doesn't create wild level changes.
+    let tone=0, slowTone=0, energy=0;
+    const start=Math.floor(cfg.tailStart*sr);
+    for(let i=start;i<len;i++) {
+      const x=(i/sr-cfg.tailStart);
+      const rise=Math.min(1,Math.max(0,x/.038));
+      const envelope=rise*Math.exp(-6.91*x/cfg.duration);
+      const white=rand()*2-1;
+      tone=tone*.69+white*.31;
+      slowTone=slowTone*.992+tone*.008;
+      const shaped=(tone-slowTone*.8);
+      const v=shaped*envelope;
+      sample[i]+=v;
+      energy+=v*v;
+    }
+    // Normalize only the late energy, not the whole impulse. First reflections
+    // stay controlled independently, and ConvolverNode normalization is disabled.
+    const factor=Math.sqrt(.35/Math.max(energy,1e-10));
+    // Only the late portion is scaled; early reflection samples stay as authored.
+    tone=0;slowTone=0;
+    const again=seededRandom((0x47a4c01 ^ (c+1)*7919 ^ Math.floor(cfg.duration*1e5))>>>0);
+    for(let i=start;i<len;i++) {
+      const x=i/sr-cfg.tailStart;
+      const env=Math.min(1,Math.max(0,x/.038))*Math.exp(-6.91*x/cfg.duration);
+      const white=again()*2-1;
+      tone=tone*.69+white*.31;
+      slowTone=slowTone*.992+tone*.008;
+      sample[i]+=(tone-slowTone*.8)*env*(factor-1);
+    }
+  }
+  return buffer;
+}
+function makeNodes(ac, micStream, sharedEngine) {
+  const source=ac.createMediaStreamSource(micStream);
+  const rawMeter=ac.createAnalyser();rawMeter.fftSize=2048;
+  const hp=ac.createBiquadFilter();hp.type='highpass';hp.frequency.value=95;
+  const comp=ac.createDynamicsCompressor();
+  comp.threshold.value=-24;comp.knee.value=12;comp.ratio.value=1.8;
+  comp.attack.value=.012;comp.release.value=.22;
+  const toneLow=ac.createBiquadFilter();toneLow.type='lowshelf';toneLow.frequency.value=220;
+  const toneHigh=ac.createBiquadFilter();toneHigh.type='highshelf';toneHigh.frequency.value=2600;
+  const micGain=ac.createGain();micGain.gain.value=1;
+  const meter=ac.createAnalyser();meter.fftSize=2048;meter.smoothingTimeConstant=.72;
+  const dry=ac.createGain();dry.gain.value=.96;
+  const reverbSend=ac.createGain();reverbSend.gain.value=0;
+  const reverbHP=ac.createBiquadFilter();reverbHP.type='highpass';reverbHP.frequency.value=200;
+  const reverbLP=ac.createBiquadFilter();reverbLP.type='lowpass';reverbLP.frequency.value=5100;
+  const convolvers=[ac.createConvolver(),ac.createConvolver()];
+  for(const cv of convolvers) cv.normalize=false;
+  convolvers[0].buffer=makeRoomIR(ac,ui.roomSize.value);
+  const roomGains=[ac.createGain(),ac.createGain()];roomGains[0].gain.value=1;roomGains[1].gain.value=0;
+  const reverbReturn=ac.createGain();reverbReturn.gain.value=1;
+  const reverbDuck=ac.createGain();reverbDuck.gain.value=1;
+  const echoSend=ac.createGain();echoSend.gain.value=0;
+  const echoHP=ac.createBiquadFilter();echoHP.type='highpass';echoHP.frequency.value=310;
+  // Two delay taps allow crossfading between tempos instead of modulating
+  // an active DelayNode (which produces audible pitch bends and warbling).
+  const delays=[ac.createDelay(1.5),ac.createDelay(1.5)];
+  for(const delay of delays)delay.delayTime.value=.28;
+  const echoLPs=delays.map(()=>{const f=ac.createBiquadFilter();f.type='lowpass';f.frequency.value=3200;return f;});
+  const echoFeedbacks=delays.map(()=>{const g=ac.createGain();g.gain.value=.1;return g;});
+  const echoTaps=delays.map(()=>ac.createGain());echoTaps[0].gain.value=1;echoTaps[1].gain.value=0;
+  const echoReturn=ac.createGain();echoReturn.gain.value=.82;
+  const echoDuck=ac.createGain();echoDuck.gain.value=1;
+  const mixer=ac.createGain();
+  const limiter=ac.createDynamicsCompressor();
+  // This is a peak-control compressor, not a guaranteed brickwall limiter.
+  limiter.threshold.value=-5;limiter.knee.value=1;limiter.ratio.value=12;
+  limiter.attack.value=.003;limiter.release.value=.15;
+  const monitorGain=ac.createGain();monitorGain.gain.value=0;
+
+  source.connect(rawMeter);source.connect(hp);hp.connect(comp);comp.connect(toneLow);toneLow.connect(toneHigh);toneHigh.connect(micGain);micGain.connect(meter);
+  meter.connect(dry);dry.connect(mixer);
+  meter.connect(reverbSend);reverbSend.connect(reverbHP);reverbHP.connect(reverbLP);
+  for(let i=0;i<2;i++){
+    reverbLP.connect(convolvers[i]);convolvers[i].connect(roomGains[i]);
+    roomGains[i].connect(reverbReturn);
+  }
+  reverbReturn.connect(reverbDuck);reverbDuck.connect(mixer);
+  meter.connect(echoSend);echoSend.connect(echoHP);
+  for(let i=0;i<2;i++){
+    echoHP.connect(delays[i]);delays[i].connect(echoLPs[i]);echoLPs[i].connect(echoTaps[i]);echoTaps[i].connect(echoReturn);
+    echoLPs[i].connect(echoFeedbacks[i]);echoFeedbacks[i].connect(delays[i]);
+  }
+  echoReturn.connect(echoDuck);echoDuck.connect(mixer);
+  mixer.connect(limiter);limiter.connect(monitorGain);
+  const recordVoiceDelay=ac.createDelay(.5);recordVoiceDelay.delayTime.value=0;
+  limiter.connect(recordVoiceDelay);recordVoiceDelay.connect(sharedEngine.recordMix);
+  monitorGain.connect(sharedEngine.playbackMix);
+  return {source,rawMeter,hp,comp,toneLow,toneHigh,micGain,meter,dry,reverbSend,reverbHP,reverbLP,
+    convolvers,roomGains,activeRoom:0,roomName:ui.roomSize.value,reverbReturn,reverbDuck,
+    echoSend,echoHP,delays,echoLPs,echoFeedbacks,echoTaps,activeEcho:0,echoSeconds:.28,echoReturn,echoDuck,
+    mixer,limiter,monitorGain,recordVoiceDelay,recordDest:sharedEngine.recordDest};
+}
+function updateEchoTiming(seconds){
+  if(!nodes||!ctx || !Number.isFinite(seconds))return;
+  if(Math.abs(seconds-nodes.echoSeconds)<.003)return;
+  const next=1-nodes.activeEcho,previous=nodes.activeEcho,t=ctx.currentTime;
+  const nextDelay=nodes.delays[next].delayTime;
+  nextDelay.cancelScheduledValues(t);
+  nextDelay.setValueAtTime(seconds,t);
+  for(const tap of nodes.echoTaps)tap.gain.cancelScheduledValues(t);
+  // Crossfade rather than retune the audible feedback path. The tail from
+  // the prior delay decays internally and does not need to be pitch-shifted.
+  nodes.echoTaps[previous].gain.setValueAtTime(1,t);
+  nodes.echoTaps[next].gain.setValueAtTime(0,t);
+  nodes.echoTaps[previous].gain.linearRampToValueAtTime(0,t+.09);
+  nodes.echoTaps[next].gain.linearRampToValueAtTime(1,t+.09);
+  nodes.activeEcho=next;nodes.echoSeconds=seconds;
+}
+function updateRoom() {
+  if(!nodes || !ctx || nodes.roomName===ui.roomSize.value) return;
+  const next=1-nodes.activeRoom,prev=nodes.activeRoom,t=ctx.currentTime;
+  nodes.convolvers[next].buffer=makeRoomIR(ctx,ui.roomSize.value);
+  for(let i=0;i<2;i++) nodes.roomGains[i].gain.cancelScheduledValues(t);
+  nodes.roomGains[next].gain.setValueAtTime(0,t);
+  nodes.roomGains[prev].gain.setValueAtTime(1,t);
+  nodes.roomGains[next].gain.linearRampToValueAtTime(1,t+.2);
+  nodes.roomGains[prev].gain.linearRampToValueAtTime(0,t+.2);
+  nodes.activeRoom=next;nodes.roomName=ui.roomSize.value;
+}
+// One persistent AudioContext owns both playback and the recording mix.
+// MediaElementAudioSourceNode can only be created once per media element;
+// retaining this context is necessary when stopping/restarting the mic.
+async function ensureEngine(){
+  if(engine){
+    if(ctx.state==='closed')throw new Error('Audio engine closed. Reload the page.');
+    if(ctx.state!=='running')await ctx.resume();
+    if(!engine.direct && ui.voicePlayback.paused)await ui.voicePlayback.play();
+    await applySpeaker(ctx,engine.direct);
+    return engine;
+  }
+  const ac=new AudioContext({latencyHint:'interactive'});
+  const direct=typeof ac.setSinkId==='function';
+  const out=direct?ac.destination:ac.createMediaStreamDestination();
+  const recordDest=ac.createMediaStreamDestination();
+  // Sum both paths BEFORE the final peaks limiter. Individual microphone
+  // compression cannot prevent a hot backing track from clipping the mix.
+  const playbackMix=ac.createGain(), playbackLimiter=ac.createDynamicsCompressor();
+  const recordMix=ac.createGain(), recordLimiter=ac.createDynamicsCompressor();
+  for(const limit of [playbackLimiter,recordLimiter]){
+    limit.threshold.value=-4;limit.knee.value=2;limit.ratio.value=12;
+    limit.attack.value=.004;limit.release.value=.12;
+  }
+  playbackMix.connect(playbackLimiter);playbackLimiter.connect(out);
+  recordMix.connect(recordLimiter);recordLimiter.connect(recordDest);
+  try{
+    const musicSource=ac.createMediaElementSource(ui.songPlayer);
+    const musicGain=ac.createGain();musicGain.gain.value=+ui.musicVolume.value/100;
+    const recordMusicGain=ac.createGain();recordMusicGain.gain.value=ui.recordMode.value==='mix'?1:0;
+    const recordMusicDelay=ac.createDelay(.5);recordMusicDelay.delayTime.value=0;
+    musicSource.connect(musicGain);
+    musicGain.connect(playbackMix);
+    musicGain.connect(recordMusicGain);
+    recordMusicGain.connect(recordMusicDelay);recordMusicDelay.connect(recordMix);
+    if(!direct) ui.voicePlayback.srcObject=out.stream;
+    // The output element is needed only for compatibility browsers.
+    ctx=ac;
+    engine={musicSource,musicGain,recordMusicGain,recordMusicDelay,recordDest,recordMix,playbackMix,playbackOut:out,direct};
+    ac.addEventListener('statechange',onContextState);
+    await ac.resume();
+    if(!direct)await ui.voicePlayback.play();
+    await applySpeaker(ac,direct);
+    lastOutputId=ui.outputSelect.value;
+    const latency=(ac.baseLatency||0)+(ac.outputLatency||0);
+    ui.audioLatency.textContent=latency>0?'Browser output buffer: ~'+Math.round(latency*1000)+' ms · not total mic delay':'Output latency: browser/device dependent';
+    updateAudioDiagnostics();
+    return engine;
+  }catch(e){
+    // Once createMediaElementSource has bound the <audio> element, a new
+    // AudioContext cannot bind it again. Keep the context and retry playback
+    // on the next real user gesture rather than irreversibly breaking music.
+    // A MediaElementAudioSourceNode cannot be moved to a different context.
+    // Keep the graph for a later explicit user-gesture retry instead of closing it.
+    needsRecovery('Audio output could not start: '+(e?.message||e)+'. Check your Pebble V3 and choose Reconnect audio.');
+    throw e;
+  }
+}
+async function refreshDevices() {
+  if (!navigator.mediaDevices?.enumerateDevices) return;
+  try {
+    const devices=await navigator.mediaDevices.enumerateDevices();
+    const missing=[];
+    for (const [kind,select,prefix] of [['audioinput',ui.inputSelect,'Microphone'],['audiooutput',ui.outputSelect,'Speaker']]) {
+      const original=select.value;
+      select.replaceChildren(new Option('System default '+(kind==='audioinput'?'microphone':'speaker'),''));
+      let n=0;
+      for(const device of devices.filter(d=>d.kind===kind && d.deviceId && d.deviceId!=='default' && d.deviceId!=='communications')) {
+        n++;
+        select.add(new Option(device.label || `${prefix} ${n}`, device.deviceId));
+      }
+      if(Array.from(select.options).some(o=>o.value===original))select.value=original;
+      else if(original) missing.push(kind);
+    }
+    if (!(engine?.direct || 'setSinkId' in ui.voicePlayback)) ui.outputHelp.textContent='This browser cannot select speakers here. Set Pebble V3 as the default Windows output.';
+    return missing;
+  } catch(e) { console.warn('Device discovery unavailable',e);return []; }
+}
+async function applySpeaker(audio=ctx, isDirect=!!engine?.direct) {
+  const id=ui.outputSelect.value;
+  if (audio && isDirect && typeof audio.setSinkId==='function') {
+    await audio.setSinkId(id || '');
+  } else if (typeof ui.voicePlayback.setSinkId==='function') {
+    await ui.voicePlayback.setSinkId(id);
+  } else if (id) {
+    throw new Error('Speaker selection is not supported in this browser. Select Pebble V3 in Windows Sound settings.');
+  }
+  if(!engine && typeof ui.songPlayer.setSinkId==='function') await ui.songPlayer.setSinkId(id);
+}
+async function startMic() {
+  if (starting || nodes) return;
+  if (!navigator.mediaDevices?.getUserMedia || !window.AudioContext) {
+    info('Microphone access needs a supported browser and a secure local page. Try Chrome/Edge, or run this page at http://localhost:8765.','error');return;
+  }
+  starting=true;setUiRunning(false);ui.startBtn.textContent='Connecting…';
+  let freshStream=null;
+  try {
+    const audioConstraints={channelCount:1,echoCancellation:ui.aec.checked,noiseSuppression:false,autoGainControl:false};
+    if(ui.inputSelect.value) audioConstraints.deviceId={exact:ui.inputSelect.value};
+    freshStream=await navigator.mediaDevices.getUserMedia({audio:audioConstraints,video:false});
+    const shared=await ensureEngine();
+    const freshNodes=makeNodes(ctx,freshStream,shared);
+    freshNodes.monitorGain.gain.value=0;
+    stream=freshStream;nodes=freshNodes;updateTestUi();updateAudioDiagnostics();
+    speakerOn=false;applyControls();startMeter();
+    await refreshDevices();
+    const track=stream.getAudioTracks()[0];
+    lastInputTrackId=track?.getSettings?.().deviceId || ui.inputSelect.value;
+    micWasLost=false;clearRecovery();
+    const micName=track?.label||'Microphone';
+    status('MIC LIVE · OUTPUT MUTED',true);
+    ui.inputInfo.textContent='Connected: '+micName+'. Speak normally and watch the VOICE meter. Speakers are muted.';
+    ui.speakerInfo.textContent='Microphone is ready. Start with low Pebble volume, then enable voice monitoring.';
+    info('Mic connected with '+(engine.direct?'direct output':'compatibility playback')+'. Music remains independent of mic monitoring.','success');
+    track.addEventListener('ended',async()=>{
+      if(stream!==freshStream || shutdownInProgress)return;
+      micWasLost=true;
+      await stopMic();
+      needsRecovery('The microphone was disconnected or permission was removed. Check the QuadCast, then select Reconnect audio.');
+    });
+    track.addEventListener('mute',()=>{
+      if(stream!==freshStream || shutdownInProgress)return;
+      needsRecovery('Windows or the browser temporarily muted the QuadCast. Check microphone permissions and select Reconnect audio.');
+    });
+  } catch(err) {
+    console.error(err);
+    if(freshStream) freshStream.getTracks().forEach(t=>t.stop());
+
+    needsRecovery('Microphone could not start: '+(err?.message||String(err))+'. Check permissions and the microphone device.');
+    info('Could not start audio: '+(err?.message||String(err))+'. Check microphone permissions and close programs that may be using the QuadCast.','error');
+    status('NOT CONNECTED');
+  } finally {
+    starting=false;ui.startBtn.textContent='Start microphone';setUiRunning(!!nodes);
+  }
+}
+async function stopMic() {
+  monitorMute();
+  await stopRecording();
+  stopMeter();
+  cancelSoundCheck();
+  const oldNodes=nodes;nodes=null;updateTestUi();
+  if(stream) {stream.getTracks().forEach(t=>t.stop());stream=null;}
+  if(oldNodes){
+    // Disconnect microphone processing, but preserve the track engine.
+    // The old processing graph contains feedback loops. Release EVERY node,
+    // including delay feedback and the recording branch, not just the source.
+    // Otherwise restarting the mic accumulates processors and silent work.
+    const used=new Set();
+    for(const value of Object.values(oldNodes)){
+      for(const node of (Array.isArray(value)?value:[value])){
+        if(node && typeof node.disconnect==='function' && !used.has(node)){
+          used.add(node);
+          try{node.disconnect();}catch(e){}
+        }
+      }
+    }
+  }
+  suggestedGain=null;ui.gainAdvice.textContent='Run the guided sound check to obtain a conservative gain suggestion.';
+  ui.inputInfo.textContent='Microphone stopped. No voice is being sent to your speakers.';
+  ui.speakerInfo.textContent='No microphone audio is being sent to speakers.';
+  status('NOT CONNECTED');setUiRunning(false);updateAudioDiagnostics();
+}
+function toggleSpeaker() {
+  if(!ctx || !nodes) return;
+  if(stream?.getAudioTracks()?.[0]?.readyState!=='live'){needsRecovery('Microphone is no longer live. Reconnect before speaker monitoring.');return;}
+  if(speakerOn) {monitorMute('Microphone speaker output muted.');return;}
+  if(+ui.volume.value>40){
+    info('For speaker safety, reduce live-voice speaker volume to 40% or less before enabling monitoring.','error');return;
+  }
+  if(ctx.state!=='running'){needsRecovery('Audio is '+ctx.state+'. Select Reconnect audio before enabling voice.');return;}
+  speakerOn=true;updateTestUi();
+  // Gain remains zero until the explicit user gesture; fade in over ~180 ms.
+  if(ui.softStart.checked){
+    const t=ctx.currentTime;
+    nodes.monitorGain.gain.cancelScheduledValues(t);
+    nodes.monitorGain.gain.setValueAtTime(0,t);
+    nodes.monitorGain.gain.linearRampToValueAtTime((+ui.volume.value/100)*.75,t+.18);
+  }else applyControls();
+  status('MIC + SPEAKERS LIVE',true);
+  updatePerformanceBar();
+  ui.monitorBtn.textContent='Mute voice in speakers';
+  ui.speakerInfo.textContent='VOICE IS PLAYING through the selected speaker. Press Esc to mute immediately.';
+  info('Monitoring enabled at '+ui.volume.value+'%. If you hear ringing, press Esc immediately.','success');
+}
+function setPreset(name) {
+  const preset=presetValues[name];if(!preset)return;
+  for(const [key,value] of Object.entries(preset))ui[key].value=value;
+  ui.compareDry.checked=false;
+  ui.presetHint.textContent=name.charAt(0).toUpperCase()+name.slice(1)+' sound selected';
+  updateRoom();
+  document.querySelectorAll('[data-preset]').forEach(b=>b.classList.toggle('active',b.dataset.preset===name));
+  ui.echoTime.disabled=ui.echoSync.value!=='manual';
+  applyControls();
+}
+function resetTakeUrl(){
+  if(recordUrl){URL.revokeObjectURL(recordUrl);recordUrl=null;}
+}
+function setRecordingUi(active){
+  ui.recordBtn.disabled=active || !nodes;
+  ui.recordAndPlay.disabled=active || !nodes || !songUrl;
+  ui.recordMode.disabled=active;
+  ui.recordStopBtn.disabled=!active;
+  ui.recordBtn.classList.toggle('recording',active);
+  ui.recordBtn.textContent=active?'● Recording…':'● Start recording';
+  ui.recordClock.classList.toggle('active',active);
+  ui.songFile.disabled=active;ui.lrcFile.disabled=active;ui.clearQueue.disabled=active||!queue.length;
+  for(const btn of ui.trackQueue.querySelectorAll('button'))btn.disabled=active;
+  ui.stagePrev.disabled=active||activeTrack<=0;
+  ui.stageNext.disabled=active||activeTrack>=queue.length-1;
+  refreshLoopUI();renderEditor();
+  if(!active && recordTicker){clearInterval(recordTicker);recordTicker=null;}
+}
+function startRecording(){
+  if(!ctx || !nodes || recordSession)return;
+  if(typeof MediaRecorder==='undefined') {info('Recording is not supported in this browser. Try current Chrome or Edge.','error');return;}
+  try{
+    const candidates=['audio/webm;codecs=opus','audio/webm','audio/mp4'];
+    const mime=candidates.find(m=>MediaRecorder.isTypeSupported(m));
+    const recorder=new MediaRecorder(nodes.recordDest.stream,mime?{mimeType:mime}:undefined);
+    resetTakeUrl();ui.takePanel.classList.add('hidden');ui.takePlayer.removeAttribute('src');
+    recordChunks=[];
+    recorder.ondataavailable=e=>{if(e.data && e.data.size)recordChunks.push(e.data);};
+    recorder.onerror=e=>info('Recording problem: '+(e.error?.message||'Unknown recording error'),'error');
+    recorder.onstop=()=>{
+      const chunks=recordChunks.slice();recordChunks=[];
+      if(recordSession===recorder)recordSession=null;
+      setRecordingUi(false);
+      if(!chunks.length){info('No audio was captured in this take.','error');return;}
+      const type=recorder.mimeType||'audio/webm';
+      const blob=new Blob(chunks,{type});
+      recordUrl=URL.createObjectURL(blob);
+      ui.takePlayer.src=recordUrl;
+      ui.takeDownload.href=recordUrl;
+      ui.takeDownload.download='roomtone-vocal-'+new Date().toISOString().replace(/[:.]/g,'-')+(type.includes('mp4')?'.m4a':'.webm');
+      ui.takePanel.classList.remove('hidden');
+      info('Take ready. '+(ui.recordMode.value==='mix'?'Any loaded backing track playing during the take is included.':'Recorded processed voice only.')+' Play or download it.','success');
+    };
+    recorder.start(300);
+    recordSession=recorder;
+    const started=performance.now();
+    const tick=()=>{const secs=Math.floor((performance.now()-started)/1000);ui.recordClock.textContent=String(Math.floor(secs/60)).padStart(2,'0')+':'+String(secs%60).padStart(2,'0');};
+    tick();recordTicker=setInterval(tick,250);
+    setRecordingUi(true);
+    info('Recording '+(ui.recordMode.value==='mix'?'voice + local backing track':'processed voice')+' locally. Speaker monitoring can stay muted.','success');
+  }catch(e){info('Could not start recording: '+e.message,'error');}
+}
+function stopRecording(){
+  recordingSongEnd=false;
+  const recorder=recordSession;
+  if(!recorder || recorder.state==='inactive'){setRecordingUi(false);return Promise.resolve();}
+  return new Promise(resolve=>{
+    recorder.addEventListener('stop',resolve,{once:true});
+    try{recorder.stop();}catch(e){resolve();}
+    setRecordingUi(false);
+  });
+}
+ui.recordBtn.addEventListener('click',startRecording);
+ui.recordAndPlay.addEventListener('click',async()=>{
+  if(!nodes||recordSession||!songUrl)return;
+  try{
+    ui.songPlayer.pause();
+    // Reset playback, then arm the recorder BEFORE the song starts. Both paths
+    // share one AudioContext, so the recorded waveform is on the same clock.
+    ui.songPlayer.currentTime=0;
+    await ensureEngine();
+    startRecording();
+    if(!recordSession)return;
+    recordingSongEnd=true;
+    await ui.songPlayer.play();
+    info('Recording started with the local backing track from the beginning.','success');
+  }catch(e){await stopRecording();info('Could not start song with recording: '+e.message,'error');}
+});
+ui.recordStopBtn.addEventListener('click',stopRecording);
+ui.startBtn.addEventListener('click',startMic);
+ui.stopBtn.addEventListener('click',stopMic);
+ui.monitorBtn.addEventListener('click',toggleSpeaker);
+ui.panicBtn.addEventListener('click',()=>monitorMute('Emergency mute enabled.'));
+ui.stagePanic.addEventListener('click',()=>monitorMute('Live voice muted from performance view.'));
+ui.stageMic.addEventListener('click',()=>nodes?stopMic():startMic());
+ui.stageMonitor.addEventListener('click',toggleSpeaker);
+ui.stageDry.addEventListener('click',()=>{
+  ui.compareDry.checked=!ui.compareDry.checked;
+  ui.stageDry.setAttribute('aria-pressed',String(ui.compareDry.checked));
+  ui.stageDry.textContent=ui.compareDry.checked?'Effects bypassed':'Dry voice';
+  applyControls();
+});
+ui.compareDry.addEventListener('change',()=>{
+  ui.stageDry.setAttribute('aria-pressed',String(ui.compareDry.checked));
+  ui.stageDry.textContent=ui.compareDry.checked?'Effects bypassed':'Dry voice';
+});
+async function recoverAudio(){
+  if(recovering)return;
+  recovering=true;ui.recoverBtn.disabled=true;ui.recoverBtn.textContent='Reconnecting…';
+  monitorMute();updatePerformanceBar();
+  try{
+    const missing=await refreshDevices()||[];
+    if(missing.includes('audiooutput'))ui.outputSelect.value='';
+    if(missing.includes('audioinput'))ui.inputSelect.value='';
+    if(engine){
+      if(ctx.state==='closed')throw new Error('Audio engine closed. Reload the app to create a fresh audio engine.');
+      if(ctx.state!=='running')await ctx.resume();
+      if(!engine.direct && ui.voicePlayback.paused)await ui.voicePlayback.play();
+      await applySpeaker(ctx,engine.direct);
+      lastOutputId=ui.outputSelect.value;
+    }
+    const input=stream?.getAudioTracks()[0];
+    if(input?.readyState==='ended') {micWasLost=true;await stopMic();}
+    if(!nodes && micWasLost){
+      await startMic();
+      if(!nodes)throw new Error('The microphone did not reconnect. Check QuadCast permissions.');
+    }
+    if(ctx && ctx.state!=='running')throw new Error('Audio is still '+ctx.state+'. Check Windows audio or reload the app.');
+    clearRecovery();
+    info('Audio connection restored. Live voice remains muted until you enable it.','success');
+  }catch(e){needsRecovery('Recovery failed: '+(e?.message||e)+'. Try selecting system default audio or reloading the page.');}
+  finally{recovering=false;ui.recoverBtn.disabled=false;ui.recoverBtn.textContent='Reconnect audio';updatePerformanceBar();}
+}
+ui.recoverBtn.addEventListener('click',recoverAudio);
+for(const check of document.querySelectorAll('[data-qa]'))check.addEventListener('change',()=>{
+  hardwareChecks[check.dataset.qa]=check.checked;updateQaStatus();
+});
+ui.exportDiagnostics.addEventListener('click',()=>{
+  const track=stream?.getAudioTracks()?.[0];
+  const report={
+    app:'ROOMTONE', version:'1.0',generated:new Date().toISOString(),
+    browser:navigator.userAgent,
+    secureContext:window.isSecureContext,
+    microphone:{active:!!nodes,trackState:track?.readyState||'none', muted:track?.muted??null,
+      sampleRate:track?.getSettings?.().sampleRate||null,echoCancellation:track?.getSettings?.().echoCancellation??null},
+    output:{choice:ui.outputSelect.value?'explicit device':'system default',directAudioContext:!!engine?.direct},
+    audio:{contextState:ctx?.state||'not started',sampleRate:ctx?.sampleRate||null,
+      baseLatency:ctx?.baseLatency??null,outputLatency:ctx?.outputLatency??null},
+    configuration:{dynamics:ui.dynamics.value,micGainPercent:Number(ui.micGain.value),
+      reverbPercent:Number(ui.reverb.value),echoPercent:Number(ui.echo.value),monitoring:speakerOn},
+    hardwareChecks:{...hardwareChecks},
+    caveat:'The browser cannot measure microphone-to-speaker round-trip delay or verify acoustic feedback; hardware checks are user-reported.'
+  };
+  exportTextFile(JSON.stringify(report,null,2),'roomtone-device-report.json','application/json');
+  info('Device report downloaded. It contains configuration and user-marked checks, not audio recordings.','success');
+});
+updateQaStatus();
+
+window.addEventListener('keydown',e=>{if(e.key==='Escape' && speakerOn){monitorMute('Emergency mute enabled.');e.preventDefault();}});
+function markCustom(){
+  document.querySelectorAll('[data-preset]').forEach(b=>b.classList.remove('active'));
+  ui.presetHint.textContent='Custom sound';
+}
+for (const el of [ui.volume,ui.micGain,ui.voiceTone,ui.reverb,ui.reverbTone,ui.echo,ui.echoTime,ui.echoFeedback,ui.recordSync]) el.addEventListener('input',()=>{
+  if(el===ui.micGain){suggestedGain=null;updateTestUi();}
+  if(el!==ui.volume && el!==ui.recordSync)markCustom();
+  if(el===ui.volume && speakerOn && +ui.volume.value>40){
+    monitorMute('Monitoring muted: volume exceeded the 40% safe-start limit. Lower it before enabling again.');
+  }
+  applyControls();
+});
+ui.dynamics.addEventListener('change',()=>{markCustom();applyControls();});
+ui.applyGain.addEventListener('click',()=>{
+  if(suggestedGain===null||speakerOn||!nodes||soundCheck)return;
+  ui.micGain.value=String(suggestedGain);
+  suggestedGain=null;markCustom();applyControls();updateTestUi();
+  ui.gainAdvice.textContent='Suggested gain applied. This does not raise hardware microphone sensitivity; rerun sound check if needed.';
+});
+ui.echoSync.addEventListener('change',()=>{
+  ui.echoTime.disabled=ui.echoSync.value!=='manual';markCustom();applyControls();
+});
+ui.tempoBpm.addEventListener('input',()=>{
+  const n=Number(ui.tempoBpm.value);
+  if(!Number.isFinite(n)||n<60||n>200)return;
+  tempoTaps=[];ui.tempoStatus.textContent='Using '+n+' BPM';markCustom();applyControls();
+});
+ui.tapTempo.addEventListener('click',()=>{
+  const now=performance.now();
+  if(tempoTaps.length && now-tempoTaps[tempoTaps.length-1]>2000)tempoTaps=[];
+  tempoTaps.push(now);if(tempoTaps.length>6)tempoTaps.shift();
+  if(tempoTaps.length<3){ui.tempoStatus.textContent='Tap '+(3-tempoTaps.length)+' more time(s)';return;}
+  const gaps=tempoTaps.slice(1).map((time,i)=>time-tempoTaps[i]).filter(g=>g>=300&&g<=1000);
+  if(!gaps.length)return;
+  const bpm=Math.round(60000/(gaps.reduce((a,b)=>a+b,0)/gaps.length));
+  ui.tempoBpm.value=Math.max(60,Math.min(200,bpm));
+  ui.tempoStatus.textContent=ui.tempoBpm.value+' BPM · tapped';markCustom();applyControls();
+});
+ui.musicVolume.addEventListener('input',()=>{setKnobLabels();if(ctx&&engine)engine.musicGain.gain.setTargetAtTime(+ui.musicVolume.value/100,ctx.currentTime,.03);});
+ui.songSpeed.addEventListener('change',()=>{
+  ui.songPlayer.playbackRate=Number(ui.songSpeed.value);
+  if('preservesPitch' in ui.songPlayer)ui.songPlayer.preservesPitch=true;
+});
+ui.songRestart.addEventListener('click',()=>{ui.songPlayer.currentTime=0;if(ui.songPlayer.paused)ui.songPlayer.play().catch(e=>info('Playback failed: '+e.message,'error'));});
+ui.recordMode.addEventListener('change',()=>{
+  if(ctx&&engine)engine.recordMusicGain.gain.setTargetAtTime(ui.recordMode.value==='mix'?1:0,ctx.currentTime,.01);
+  ui.recordGuide.textContent=ui.recordMode.value==='mix'?'Records vocal plus the loaded song while it plays. YouTube cannot be included.':'Records processed microphone only, without the backing track.';
+});
+document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>setPreset(b.dataset.preset)));
+ui.roomSize.addEventListener('change',()=>{
+  markCustom();
+  updateRoom();
+});
+ui.compareDry.addEventListener('change',applyControls);
+ui.monitorOnlyTest.addEventListener('change',applyControls);
+ui.noiseTest.addEventListener('click',()=>beginSoundCheck('noise'));
+ui.voiceTest.addEventListener('click',()=>beginSoundCheck('voice'));
+ui.cancelTest.addEventListener('click',()=>cancelSoundCheck());
+ui.refreshAudioInfo.addEventListener('click',updateAudioDiagnostics);
+ui.clarity.addEventListener('change',markCustom);
+ui.clarity.addEventListener('change',()=>{
+  if(!ui.clarity.checked && nodes && ctx){
+    nodes.reverbDuck.gain.setTargetAtTime(1,ctx.currentTime,.05);
+    nodes.echoDuck.gain.setTargetAtTime(1,ctx.currentTime,.05);
+  }
+});
+ui.outputSelect.addEventListener('change',async()=>{
+  const next=ui.outputSelect.value;
+  monitorMute();
+  try{
+    if(engine)await applySpeaker(ctx,engine.direct);
+    else if(typeof ui.songPlayer.setSinkId==='function')await ui.songPlayer.setSinkId(next);
+    lastOutputId=next;
+    clearRecovery();updateAudioDiagnostics();
+    info('Output selected. Live voice is muted; enable it explicitly after lowering speaker volume.','success');
+  }catch(e){
+    ui.outputSelect.value=lastOutputId;
+    needsRecovery('Speaker selection failed: '+(e?.message||e)+'. Check the Pebble connection, or use system default output.');
+  }
+});
+ui.aec.addEventListener('change',()=>info('Echo cancellation setting saved. Stop and restart the microphone for the change to apply.'));
+// Personal sound settings are stored locally. Device selection and speaker
+// monitoring are deliberately not restored, so a refresh cannot make noise.
+ui.saveSound.addEventListener('click',()=>{
+  try {
+    const saved=Object.fromEntries(soundControls.map(key=>[key,ui[key].type==='checkbox'?ui[key].checked:ui[key].value]));
+    localStorage.setItem(SAVED_SOUND_KEY,JSON.stringify(saved));
+    info('Saved your vocal sound in this browser. Speaker monitoring will still start muted.','success');
+  } catch(e){info('Could not save settings in this browser: '+e.message,'error');}
+});
+ui.loadSound.addEventListener('click',()=>{
+  try {
+    const saved=JSON.parse(localStorage.getItem(SAVED_SOUND_KEY)||localStorage.getItem(LEGACY_SOUND_KEY)||'null');
+    if(!saved || typeof saved!=='object'){info('No saved sound yet. Set your controls, then choose Save my sound.');return;}
+    for(const key of soundControls){
+      const value=saved[key]; if(value===undefined)continue;
+      if(ui[key].type==='checkbox')ui[key].checked=!!value;
+      else if(ui[key].tagName==='SELECT'){
+        if(Array.from(ui[key].options).some(o=>o.value===value))ui[key].value=value;
+      } else if(Number.isFinite(Number(value))) {
+        ui[key].value=Math.min(+ui[key].max,Math.max(+ui[key].min,Number(value)));
+      }
+    }
+    ui.compareDry.checked=false;markCustom();updateRoom();ui.echoTime.disabled=ui.echoSync.value!=='manual';applyControls();
+    info('Restored your saved vocal sound. Live speaker monitoring remains unchanged.','success');
+  }catch(e){info('Could not load saved settings: '+e.message,'error');}
+});
+ui.resetSound.addEventListener('click',()=>{setPreset('studio');ui.clarity.checked=false;ui.micGain.value=100;ui.voiceTone.value=50;ui.recordSync.value=0;ui.dynamics.value='balanced';applyControls();info('Reset to a gentle Studio vocal sound.','success');});
+// -- v0.6 local playlist and timed LRC lyrics ----------------------------------
+const friendlyTime=sec=>{
+  const n=Number.isFinite(sec)?Math.max(0,Math.floor(sec)):0;
+  return String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
+};
+const stem=name=>name.replace(/\.[^.]+$/,'').trim().toLocaleLowerCase();
+const displayName=name=>name.replace(/\.[^.]+$/,'');
+function parseLRC(raw){
+  const result=[], tags=/\[(\d{1,3}):(\d{2})(?:\.(\d{1,3}))?\]/g;
+  let offset=0;
+  for(const line of raw.replace(/\r/g,'').split('\n')){
+    const setting=line.match(/^\s*\[offset\s*:\s*([+-]?\d+)\s*\]\s*$/i);
+    if(setting){offset=Number(setting[1])||0;continue;}
+    tags.lastIndex=0;
+    const matches=[...line.matchAll(tags)];
+    if(!matches.length)continue;
+    const content=line.replace(tags,'').trim();
+    for(const m of matches){
+      const fraction=m[3]?Number('0.'+m[3]):0;
+      const t=Number(m[1])*60+Number(m[2])+fraction;
+      if(Number.isFinite(t))result.push({time:Math.max(0,t+offset/1000),text:content});
+    }
+  }
+  result.sort((a,b)=>a.time-b.time);
+  return result.slice(0,10000);
+}
+function renderQueue(){
+  ui.trackQueue.replaceChildren();
+  queue.forEach((track,i)=>{
+    const item=document.createElement('li');item.className='queue-item'+(i===activeTrack?' current':'');
+    const choose=document.createElement('button');choose.type='button';choose.className='queue-play';
+    choose.textContent=(i+1)+'. '+(track.title||displayName(track.file.name));
+    choose.title=track.file.name;choose.disabled=!!recordSession;
+    choose.addEventListener('click',()=>selectTrack(i,false));
+    const note=document.createElement('span');note.className='queue-lyric-indicator';note.textContent=track.lyrics?.length?'LRC':'';
+    const remove=document.createElement('button');remove.type='button';remove.className='queue-remove';remove.textContent='Remove';
+    remove.setAttribute('aria-label','Remove '+track.file.name);remove.disabled=!!recordSession;
+    remove.addEventListener('click',()=>removeTrack(i));
+    const up=document.createElement('button');up.type='button';up.className='queue-move';up.textContent='↑';up.title='Move song up';up.setAttribute('aria-label','Move '+track.file.name+' up');up.disabled=i===0||!!recordSession;up.addEventListener('click',()=>moveTrack(i,-1));
+    const down=document.createElement('button');down.type='button';down.className='queue-move';down.textContent='↓';down.title='Move song down';down.setAttribute('aria-label','Move '+track.file.name+' down');down.disabled=i===queue.length-1||!!recordSession;down.addEventListener('click',()=>moveTrack(i,1));
+    item.append(choose,note,up,down,remove);ui.trackQueue.append(item);
+  });
+  ui.queueSummary.textContent=queue.length?queue.length+' track'+(queue.length===1?'':'s')+' queued · '+(activeTrack+1)+' selected':'Select multiple audio files. Songs remain on your device and are not uploaded.';
+  ui.clearQueue.disabled=!queue.length||!!recordSession;
+  ui.stagePrev.disabled=!!recordSession||activeTrack<=0;
+  ui.stageNext.disabled=!!recordSession||activeTrack>=queue.length-1;
+  ui.stagePlay.disabled=activeTrack<0;
+  ui.stageSeek.disabled=activeTrack<0;
+  ui.recordAndPlay.disabled=!nodes||!!recordSession||!songUrl;
+}
+function updateStage(){
+  updateReadiness();
+  const song=queue[activeTrack];
+  const duration=ui.songPlayer.duration,sec=ui.songPlayer.currentTime;
+  ui.stageTitle.textContent=song?(song.title||displayName(song.file.name)):'No song loaded';
+  ui.stageSub.textContent=song?(activeTrack+1)+' / '+queue.length+' · '+(song.lyrics?.length?`${song.lyrics.length} timed lyric lines`:'No synced lyrics attached'):'Add an audio file and an optional .lrc lyrics file to get started.';
+  ui.stagePlay.textContent=!ui.songPlayer.paused?'Pause':'Play';
+  ui.stageTime.textContent=friendlyTime(sec)+' / '+(Number.isFinite(duration)?friendlyTime(duration):'00:00');
+  if(Number.isFinite(duration)&&duration>0){ui.stageSeek.max=Math.round(duration*10);ui.stageSeek.value=String(Math.min(+ui.stageSeek.max,Math.round(sec*10)));}
+  else {ui.stageSeek.max=1000;ui.stageSeek.value=0;}
+  const lines=song?.lyrics||[];
+  let at=-1;
+  const shifted=sec-(Number(ui.lyricsOffset.value)||0)/1000;
+  let low=0,high=lines.length-1;
+  while(low<=high){const middle=(low+high)>>1;if(lines[middle].time<=shifted){at=middle;low=middle+1;}else high=middle-1;}
+  if(at!==lyricIndex){
+    lyricIndex=at;
+    ui.lyricPrev.textContent=at>0?lines[at-1].text:'';
+    ui.lyricNext.textContent=lines[at+1]?.text||'';
+    ui.lyricCurrent.textContent=lines.length?(at>=0?(lines[at].text||'Instrumental'):'Get ready…'):(song?'Add an .lrc file to display synchronized lyrics.':'Your lyrics will appear here.');
+    ui.lyricCurrent.classList.toggle('placeholder',!lines.length);
+  }
+}
+function stageTick(){
+  if(!ui.songPlayer.paused && !ui.songPlayer.ended)updateStage();
+  updatePracticeClock();
+  enforceABLoop();
+  lyricFrame=requestAnimationFrame(stageTick);
+}
+function selectTrack(index,autoplay=false){
+  if(recordSession||index<0||index>=queue.length)return;
+  const player=ui.songPlayer;player.pause();
+  editorSelectedLine=0;lastLoopCrossing=-1;activeTrack=index;const generation=++trackGeneration;const track=queue[index];songUrl=track.url;
+  player.src=track.url;player.load();player.playbackRate=Number(ui.songSpeed.value);
+  if('preservesPitch' in player)player.preservesPitch=true;
+  ui.songName.textContent=track.file.name;player.classList.remove('hidden');
+  ui.songRestart.disabled=false;ui.lyricsOffset.value=String(track.offset||0);
+  ui.lyricsOffsetValue.textContent=(track.offset||0)+' ms';
+  lyricIndex=-999;renderQueue();updateStage();renderEditor();refreshLoopUI();
+  ui.lyricsInfo.textContent=track.lyrics?.length?track.lyrics.length+' synced lyric lines attached to '+displayName(track.file.name):'No LRC for this song. Select matching lyrics files.';
+  ui.recordGuide.textContent=ui.recordMode.value==='mix'?'Ready to record voice with '+track.file.name:'Recording processed voice only.';
+  if(autoplay)playStage(true,generation);
+}
+function removeTrack(index){
+  if(recordSession||index<0||index>=queue.length)return;
+  const wasCurrent=index===activeTrack;const wasBefore=index<activeTrack;
+  const [removed]=queue.splice(index,1);
+  if(wasCurrent){
+    ui.songPlayer.pause();songUrl=null;
+    if(queue.length) {activeTrack=-1;selectTrack(Math.min(index,queue.length-1));}
+    else resetPlaylist();
+  } else {if(wasBefore)activeTrack--;renderQueue();updateStage();}
+  URL.revokeObjectURL(removed.url);renderEditor();refreshLoopUI();
+}
+function resetPlaylist(){
+  ui.songPlayer.pause();ui.songPlayer.removeAttribute('src');ui.songPlayer.load();
+  trackGeneration++;songUrl=null;activeTrack=-1;ui.songPlayer.classList.add('hidden');
+  ui.songName.textContent='No backing track loaded';ui.songRestart.disabled=true;
+  ui.lyricsInfo.textContent='Select matching .lrc files for songs, or attach one to the active track.';
+  lyricIndex=-999;renderQueue();updateStage();renderEditor();refreshLoopUI();
+}
+async function playStage(forcePlay=false,generation=trackGeneration){
+  if(activeTrack<0)return;
+  // Ignore stale async playback operations when users rapidly change songs.
+  if(!forcePlay && !ui.songPlayer.paused){ui.songPlayer.pause();updateStage();return;}
+  try{
+    await ensureEngine();
+    if(generation!==trackGeneration)return;
+    if(ui.songPlayer.paused)await ui.songPlayer.play();
+    updateStage();
+  }catch(e){if(generation===trackGeneration)info('Cannot play this file: '+(e.message||e)+'. Check supported audio formats and audio output.','error');}
+}
+function setFocusMode(on){
+  ui.stage.classList.toggle('focus-mode',on);
+  document.body.classList.toggle('in-focus',on);
+  ui.stageFocus.textContent=on?'Exit focus':'Focus mode';
+  ui.stageFocus.setAttribute('aria-pressed',String(on));
+}
+ui.stageFocus.addEventListener('click',()=>setFocusMode(!ui.stage.classList.contains('focus-mode')));
+// Never forward the browser click event as the forcePlay flag.
+ui.stagePlay.addEventListener('click',()=>playStage());
+ui.stagePrev.addEventListener('click',()=>selectTrack(activeTrack-1,true));
+ui.stageNext.addEventListener('click',()=>selectTrack(activeTrack+1,true));
+ui.stageSeek.addEventListener('input',()=>{if(activeTrack>=0&&Number.isFinite(ui.songPlayer.duration)){ui.songPlayer.currentTime=Number(ui.stageSeek.value)/10;updateStage();}});
+ui.lyricsOffset.addEventListener('input',()=>{const offset=Number(ui.lyricsOffset.value);ui.lyricsOffsetValue.textContent=(offset>0?'+':'')+offset+' ms';if(queue[activeTrack]){queue[activeTrack].offset=offset;saveTrackDraft(queue[activeTrack]);}lyricIndex=-999;updateStage();});
+ui.songPlayer.addEventListener('timeupdate',updateStage);
+ui.songPlayer.addEventListener('durationchange',updateStage);
+ui.songPlayer.addEventListener('play',updateStage);
+ui.songPlayer.addEventListener('pause',updateStage);
+ui.songPlayer.addEventListener('ended',async()=>{
+  updateStage();
+  if(recordSession){if(recordingSongEnd)await stopRecording();return;}
+  const ab=queue[activeTrack]?.loop;
+  if(ab?.enabled && Number.isFinite(ab.a) && Number.isFinite(ab.b) && ab.b>ab.a){
+    ui.songPlayer.currentTime=ab.a;await playStage(true);return;
+  }
+  if(ui.autoNext.checked && activeTrack<queue.length-1)selectTrack(activeTrack+1,true);
+});
+ui.clearQueue.addEventListener('click',()=>{if(recordSession)return;const old=queue;queue=[];resetPlaylist();old.forEach(t=>URL.revokeObjectURL(t.url));});
+ui.songFile.addEventListener('change',async()=>{
+  const added=[...(ui.songFile.files||[])].filter(f=>f.type.startsWith('audio/')||/\.(mp3|m4a|wav|ogg|flac|aac|opus|webm)$/i.test(f.name));
+  ui.songFile.value='';if(!added.length){info('No supported-looking audio files selected.','error');return;}
+  const wasEmpty=queue.length===0;
+  for(const file of added){
+    const draft=loadTrackDraft(file);
+    queue.push({file,url:URL.createObjectURL(file),lyrics:draft?.lyrics||[],offset:draft?.offset||0,title:draft?.title||'',loop:draft?.loop||{a:null,b:null,enabled:false}});
+  }
+  if(wasEmpty)selectTrack(0);else renderQueue();
+  try{await ensureEngine();info(added.length+' song'+(added.length===1?'':'s')+' added. Use the stage to play or switch tracks.','success');}
+  catch(e){info('Tracks queued, but audio output is not ready: '+e.message+'. Press Play to retry.','error');}
+});
+ui.lrcFile.addEventListener('change',async()=>{
+  const chosen=[...(ui.lrcFile.files||[])];ui.lrcFile.value='';
+  if(!chosen.length)return;
+  if(!queue.length){info('Add an audio track first, then attach its timed .lrc lyrics.','error');return;}
+  let attached=0,unmatched=[];
+  for(const file of chosen){
+    if(!/\.lrc$/i.test(file.name)){unmatched.push(file.name);continue;}
+    try{
+      const lines=parseLRC(await file.text());
+      if(!lines.length){unmatched.push(file.name+' (no timed lines)');continue;}
+      const matching=queue.find(t=>stem(t.file.name)===stem(file.name));
+      const target=matching || (chosen.length===1?queue[activeTrack]:null);
+      if(!target){unmatched.push(file.name);continue;}
+      target.lyrics=lines;saveTrackDraft(target);attached++;
+    }catch(e){unmatched.push(file.name+' ('+(e.message||'read error')+')');}
+  }
+  lyricIndex=-999;renderQueue();updateStage();renderEditor();
+  ui.lyricsInfo.textContent=attached+' lyrics file'+(attached===1?'':'s')+' attached'+(unmatched.length?' · '+unmatched.length+' unmatched':'')+'.';
+  info(attached?'Synced lyrics added. '+(unmatched.length?'Unmatched: '+unmatched.join(', '):''):'No lyrics attached. Check filenames or LRC timestamps.',attached?'success':'error');
+});
+window.addEventListener('keydown',e=>{
+  // Escape always retains its original emergency-mute priority.
+  if(e.key==='Escape' && ui.stage.classList.contains('focus-mode')){setFocusMode(false);e.preventDefault();return;}
+  const target=e.target;
+  if(e.altKey||e.ctrlKey||e.metaKey||/^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(target?.tagName)||target?.isContentEditable)return;
+  if(e.code==='Space' && activeTrack>=0){e.preventDefault();playStage();}
+  if(e.code==='KeyF' && activeTrack>=0){e.preventDefault();setFocusMode(!ui.stage.classList.contains('focus-mode'));}
+  if(e.code==='ArrowRight' && activeTrack>=0){ui.songPlayer.currentTime=Math.min(ui.songPlayer.duration||0,ui.songPlayer.currentTime+5);updateStage();e.preventDefault();}
+  if(e.code==='ArrowLeft' && activeTrack>=0){ui.songPlayer.currentTime=Math.max(0,ui.songPlayer.currentTime-5);updateStage();e.preventDefault();}
+});
+
+// -- v0.9 Lyrics Studio and practice. Audio stays in memory; only small text
+// drafts and session metadata are stored in localStorage. -------------------
+const TRACK_KEY='roomtone:track-draft:v1:';
+const SESSION_KEY='roomtone:practice-history:v1';
+let editorSelectedLine=0, lastLoopCrossing=-1;
+let practice=null;
+const practiceHistory=(()=>{try{const raw=JSON.parse(localStorage.getItem(SESSION_KEY)||'[]');return Array.isArray(raw)?raw.slice(0,30):[];}catch{return [];}})();
+function trackFingerprint(file){return `${stem(file.name)}:${file.size}:${file.lastModified}`;}
+function normalizeLines(input){
+  return (Array.isArray(input)?input:[]).slice(0,2000).filter(x=>x&&typeof x.text==='string'&&Number.isFinite(Number(x.time)))
+    .map(x=>({time:Math.max(0,Math.min(36000,Number(x.time))),text:x.text.slice(0,600)}))
+    .sort((a,b)=>a.time-b.time);
+}
+function loadTrackDraft(file){
+  try{const v=JSON.parse(localStorage.getItem(TRACK_KEY+trackFingerprint(file))||'null');
+    if(!v||typeof v!=='object')return null;
+    const loop=v.loop||{};
+    const a=loop.a===null||loop.a===undefined?null:Number(loop.a),b=loop.b===null||loop.b===undefined?null:Number(loop.b);
+    const valid=Number.isFinite(a)&&Number.isFinite(b)&&a>=0&&b>a+.25;
+    return {lyrics:normalizeLines(v.lyrics),title:typeof v.title==='string'?v.title.slice(0,120):'',offset:Number.isFinite(v.offset)?Math.max(-2000,Math.min(2000,v.offset)):0,
+      loop:{a:Number.isFinite(a)?a:null,b:Number.isFinite(b)?b:null,enabled:valid&&loop.enabled===true}};
+  }catch{return null;}
+}
+function saveTrackDraft(track){
+  if(!track)return;
+  try{
+    const data={title:track.title||'',offset:track.offset||0,lyrics:normalizeLines(track.lyrics),loop:track.loop||null};
+    if(JSON.stringify(data).length>180000)throw Error('Lyrics are too large for browser storage. Export the LRC file instead.');
+    localStorage.setItem(TRACK_KEY+trackFingerprint(track.file),JSON.stringify(data));
+    ui.editorStatus.textContent='Saved locally for '+track.file.name+'. The audio file itself is never stored.';
+  }catch(e){ui.editorStatus.textContent='Local save failed: '+e.message+'. Export your lyrics before closing.';}
+}
+function lrcTimestamp(t){
+  const hundredths=Math.round(Math.max(0,t)*100),minutes=Math.floor(hundredths/6000),seconds=Math.floor(hundredths%6000/100),frac=hundredths%100;
+  return String(minutes).padStart(2,'0')+':'+String(seconds).padStart(2,'0')+'.'+String(frac).padStart(2,'0');
+}
+function exportTextFile(text,name,type){const blob=new Blob([text],{type});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}
+function renderEditor(){
+  const song=queue[activeTrack];
+  ui.lyricEditor.replaceChildren();
+  for(const id of ['songTitleEdit','exportLrc','addLyricLine','tapLyricLine','replaceLyrics'])ui[id].disabled=!song||!!recordSession;
+  if(!song){ui.songTitleEdit.value='';ui.lyricLineCount.textContent='No song selected';const p=document.createElement('p');p.className='help';p.style.padding='14px';p.textContent='Add a song, then paste lyrics, stamp lines, or import an .lrc file.';ui.lyricEditor.append(p);return;}
+  ui.songTitleEdit.value=song.title||displayName(song.file.name);
+  editorSelectedLine=Math.min(Math.max(0,editorSelectedLine),Math.max(0,song.lyrics.length-1));
+  ui.lyricLineCount.textContent=song.lyrics.length+' timed line'+(song.lyrics.length===1?'':'s');
+  if(!song.lyrics.length){const p=document.createElement('p');p.className='help';p.style.padding='14px';p.textContent='No lyrics yet. Use “+ Add line”, import .lrc, or paste plain lines below.';ui.lyricEditor.append(p);return;}
+  song.lyrics.forEach((line,i)=>{
+    const row=document.createElement('div');row.className='lyric-edit-row'+(i===editorSelectedLine?' selected':'');
+    const number=document.createElement('button');number.type='button';number.className='lyric-number';number.textContent=i+1;number.setAttribute('aria-label','Select lyric line '+(i+1));
+    number.addEventListener('click',()=>{editorSelectedLine=i;renderEditor();});
+    const time=document.createElement('input');time.className='lyric-time';time.type='number';time.step='.01';time.min='0';time.max='36000';time.value=line.time.toFixed(2);time.setAttribute('aria-label','Line '+(i+1)+' timestamp in seconds');
+    time.addEventListener('change',()=>{const n=Number(time.value);if(!Number.isFinite(n)||n<0||n>36000){time.value=line.time.toFixed(2);return;}
+      const target=song.lyrics[i];target.time=n;const selected=target;song.lyrics.sort((a,b)=>a.time-b.time);editorSelectedLine=song.lyrics.indexOf(selected);afterLyricEdit();});
+    const text=document.createElement('input');text.type='text';text.className='lyric-text';text.maxLength=600;text.value=line.text;text.setAttribute('aria-label','Line '+(i+1)+' text');
+    text.addEventListener('input',()=>{line.text=text.value;lyricIndex=-999;updateStage();saveTrackDraft(song);});
+    const actions=document.createElement('div');actions.className='lyric-row-actions';
+    const btn=(label,action,cls='')=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.className=cls;b.addEventListener('click',()=>{editorSelectedLine=i;action();});actions.append(b);};
+    btn('◀ Seek',()=>{ui.songPlayer.currentTime=line.time;renderEditor();updateStage();});
+    btn('● Stamp',()=>stampLine(i));
+    btn('−0.1 s',()=>nudgeLine(i,-.1));btn('+0.1 s',()=>nudgeLine(i,.1));
+    btn('Delete',()=>{song.lyrics.splice(i,1);editorSelectedLine=Math.max(0,i-1);afterLyricEdit();},'remove-line');
+    row.append(number,time,text,actions);ui.lyricEditor.append(row);
+  });
+}
+function afterLyricEdit(){const song=queue[activeTrack];if(!song)return;lyricIndex=-999;saveTrackDraft(song);renderQueue();updateStage();renderEditor();}
+function stampLine(index){const song=queue[activeTrack];if(!song||!song.lyrics[index])return;
+  const line=song.lyrics[index];line.time=Math.max(0,ui.songPlayer.currentTime-(Number(ui.lyricsOffset.value)||0)/1000);song.lyrics.sort((a,b)=>a.time-b.time);editorSelectedLine=song.lyrics.indexOf(line);afterLyricEdit();}
+function nudgeLine(i,delta){const song=queue[activeTrack];if(!song||!song.lyrics[i])return;
+  const line=song.lyrics[i];line.time=Math.max(0,Math.round((line.time+delta)*100)/100);song.lyrics.sort((a,b)=>a.time-b.time);editorSelectedLine=song.lyrics.indexOf(line);afterLyricEdit();}
+ui.jumpToStudio.addEventListener('click',()=>{if(ui.stage.classList.contains('focus-mode'))setFocusMode(false);ui.lyricsStudio.scrollIntoView({behavior:'smooth',block:'start'});});
+ui.songTitleEdit.addEventListener('change',()=>{const s=queue[activeTrack];if(!s)return;s.title=ui.songTitleEdit.value.trim().slice(0,120);saveTrackDraft(s);renderQueue();updateStage();});
+ui.addLyricLine.addEventListener('click',()=>{const song=queue[activeTrack];if(!song)return;
+  const line={time:Math.max(0,Math.round(ui.songPlayer.currentTime*100)/100),text:''};song.lyrics.push(line);song.lyrics.sort((a,b)=>a.time-b.time);editorSelectedLine=song.lyrics.indexOf(line);afterLyricEdit();});
+ui.tapLyricLine.addEventListener('click',()=>{const song=queue[activeTrack];if(!song)return;if(!song.lyrics.length)ui.addLyricLine.click();else stampLine(editorSelectedLine);});
+ui.replaceLyrics.addEventListener('click',()=>{const song=queue[activeTrack];if(!song)return;
+  const raw=ui.bulkLyrics.value.trim();if(!raw){ui.editorStatus.textContent='Paste lyrics before replacing.';return;}
+  let lines=parseLRC(raw);
+  if(!lines.length){const plain=raw.split(/\r?\n/).map(x=>x.trim()).filter(Boolean).slice(0,2000);
+    if(!plain.length)return;const start=ui.songPlayer.currentTime;lines=plain.map((text,i)=>({time:Math.max(0,start+3*i),text}));}
+  song.lyrics=normalizeLines(lines);editorSelectedLine=0;afterLyricEdit();ui.editorStatus.textContent='Replaced '+song.lyrics.length+' timed lines. Edit and export whenever you are ready.';});
+ui.exportLrc.addEventListener('click',()=>{const song=queue[activeTrack];if(!song)return;
+  const title=(song.title||displayName(song.file.name));const lines=normalizeLines(song.lyrics);
+  const data='[ti:'+title.replace(/[\r\n\[\]]/g,' ')+']\n'+lines.map(line=>'['+lrcTimestamp(line.time)+']'+line.text.replace(/[\r\n]/g,' ')).join('\n')+'\n';
+  exportTextFile(data,displayName(song.file.name).replace(/[<>:"/\\|?*]/g,'_')+'.lrc','text/plain;charset=utf-8');
+  ui.editorStatus.textContent='Exported '+lines.length+' lines as an LRC file.';
+});
+function moveTrack(i,delta){if(recordSession||i+delta<0||i+delta>=queue.length)return;
+  const song=queue[activeTrack];[queue[i],queue[i+delta]]=[queue[i+delta],queue[i]];
+  activeTrack=queue.indexOf(song);renderQueue();updateStage();}
+function ensureLoop(song){if(song&&!song.loop)song.loop={a:null,b:null,enabled:false};return song?.loop;}
+function refreshLoopUI(){const song=queue[activeTrack],loop=ensureLoop(song),locked=!!recordSession;
+  ui.loopSetA.disabled=!song||locked;ui.loopSetB.disabled=!song||locked;
+  const ready=loop&&Number.isFinite(loop.a)&&Number.isFinite(loop.b)&&loop.b>loop.a+.25;
+  ui.loopToggle.disabled=!ready||locked;ui.loopClear.disabled=!song||locked||!(Number.isFinite(loop.a)||Number.isFinite(loop.b));
+  ui.loopToggle.textContent=ready&&loop.enabled?'Loop ON':'Loop OFF';ui.loopToggle.classList.toggle('active-loop',!!(ready&&loop.enabled));ui.loopToggle.setAttribute('aria-pressed',String(!!(ready&&loop.enabled)));
+  const tm=t=>Number.isFinite(t)?lrcTimestamp(t):'—';ui.loopStatus.textContent=!song?'Choose a song, then mark A and B.':`A ${tm(loop.a)} · B ${tm(loop.b)}${ready&&loop.enabled?' · REPEATING':''}`;
+}
+ui.loopSetA.addEventListener('click',()=>{const song=queue[activeTrack];if(!song)return;const loop=ensureLoop(song);loop.a=Math.max(0,ui.songPlayer.currentTime);if(Number.isFinite(loop.b)&&loop.b<=loop.a+.25){loop.b=null;loop.enabled=false;}saveTrackDraft(song);refreshLoopUI();});
+ui.loopSetB.addEventListener('click',()=>{const song=queue[activeTrack];if(!song)return;const loop=ensureLoop(song),end=ui.songPlayer.currentTime;
+  if(!Number.isFinite(loop.a)){info('Mark A first, then seek or play forward to mark B.');return;}
+  if(end<=loop.a+.25){info('Mark B at least 0.25 seconds after A.','error');return;}
+  loop.b=end;saveTrackDraft(song);refreshLoopUI();});
+ui.loopToggle.addEventListener('click',()=>{const song=queue[activeTrack];if(!song)return;const loop=ensureLoop(song);if(!Number.isFinite(loop.a)||!Number.isFinite(loop.b)||loop.b<=loop.a+.25)return;
+  loop.enabled=!loop.enabled;lastLoopCrossing=-1;saveTrackDraft(song);refreshLoopUI();});
+ui.loopClear.addEventListener('click',()=>{const song=queue[activeTrack];if(!song)return;song.loop={a:null,b:null,enabled:false};saveTrackDraft(song);refreshLoopUI();});
+function enforceABLoop(){
+  const song=queue[activeTrack],loop=song?.loop,player=ui.songPlayer;
+  if(recordSession||!loop?.enabled||player.paused||player.ended||!Number.isFinite(loop.a)||!Number.isFinite(loop.b)||loop.b<=loop.a+.25)return;
+  if(player.currentTime>=loop.b-.025){
+    const now=performance.now();if(now-lastLoopCrossing<220)return;lastLoopCrossing=now;
+    player.currentTime=loop.a;
+    if(practice?.running){practice.loops++;refreshPracticeUI();}
+    updateStage();
+  }
+}
+function safeHistorySave(){try{localStorage.setItem(SESSION_KEY,JSON.stringify(practiceHistory.slice(0,30)));return true;}catch{return false;}}
+function fmtPractice(secs){let s=Math.floor(Math.max(0,secs));return String(Math.floor(s/3600)).padStart(2,'0')+':'+String(Math.floor(s/60)%60).padStart(2,'0')+':'+String(s%60).padStart(2,'0');}
+function refreshPracticeUI(){
+  ui.practiceStart.textContent=practice?'New session':'Start session';ui.practiceStart.disabled=!!practice;
+  ui.practicePause.disabled=!practice;ui.practicePause.textContent=practice?.running?'Pause':'Resume';ui.practiceFinish.disabled=!practice;
+  ui.practiceClock.textContent=fmtPractice(practice?.seconds||0);
+  ui.practiceLabel.textContent=!practice?'Not started':practice.running?'Tracking playback':'Paused';
+  ui.practiceLoops.textContent=practice?.loops||0;ui.practiceTracks.textContent=practice?.tracks?.size||0;
+}
+function updatePracticeClock(){
+  if(!practice)return;
+  const now=performance.now(),elapsed=Math.max(0,Math.min(5,(now-practice.tick)/1000));practice.tick=now;
+  if(practice.running && !document.hidden && !ui.songPlayer.paused && !ui.songPlayer.ended && activeTrack>=0){practice.seconds+=elapsed;practice.tracks.add(queue[activeTrack].title||displayName(queue[activeTrack].file.name));}
+  if(now-(practice.lastRender||0)>250){practice.lastRender=now;refreshPracticeUI();}
+}
+ui.practiceStart.addEventListener('click',()=>{if(practice)return;practice={started:new Date().toISOString(),tick:performance.now(),running:true,seconds:0,loops:0,tracks:new Set()};refreshPracticeUI();});
+ui.practicePause.addEventListener('click',()=>{if(!practice)return;practice.running=!practice.running;practice.tick=performance.now();refreshPracticeUI();});
+function renderHistory(){ui.sessionHistory.replaceChildren();if(!practiceHistory.length){const li=document.createElement('li');li.textContent='No sessions saved yet.';ui.sessionHistory.append(li);}else for(const item of practiceHistory.slice(0,10)){
+  const li=document.createElement('li'),left=document.createElement('div'),right=document.createElement('span');
+  left.textContent=new Date(item.date).toLocaleDateString()+' · '+item.tracks.slice(0,2).join(', ')+(item.tracks.length>2?' +'+(item.tracks.length-2):'');right.textContent=fmtPractice(item.seconds)+' · '+item.loops+' loops';li.append(left,right);ui.sessionHistory.append(li);
+}ui.clearSessions.disabled=!practiceHistory.length;ui.exportSessions.disabled=!practiceHistory.length;}
+ui.practiceFinish.addEventListener('click',()=>{if(!practice)return;updatePracticeClock();const entry={date:practice.started,seconds:Math.round(practice.seconds),loops:practice.loops,tracks:[...practice.tracks].slice(0,100)};
+  practiceHistory.unshift(entry);practiceHistory.length=Math.min(30,practiceHistory.length);const saved=safeHistorySave();practice=null;refreshPracticeUI();renderHistory();info(saved?'Practice session saved locally.':'Session finished, but browser storage was unavailable. Export your history.','success');});
+ui.exportSessions.addEventListener('click',()=>exportTextFile(JSON.stringify(practiceHistory,null,2),'roomtone-practice-sessions.json','application/json'));
+ui.clearSessions.addEventListener('click',()=>{if(!confirm('Delete all saved practice-session history from this browser?'))return;practiceHistory.length=0;safeHistorySave();renderHistory();});
+refreshPracticeUI();renderHistory();refreshLoopUI();renderEditor();
+
+ui.speedNote.textContent=('preservesPitch' in ui.songPlayer)?'Practice speed preserves pitch in this browser; very slow playback may still add artifacts. YouTube in another tab cannot be recorded.':'This browser cannot confirm pitch preservation: changing playback speed may change pitch. YouTube in another tab cannot be recorded.';
+stageTick();
+if(navigator.mediaDevices?.addEventListener) navigator.mediaDevices.addEventListener('devicechange',()=>{
+  // USB unplug/replug and Windows default changes: never silently switch mic monitoring back on.
+  if(deviceRefreshPending)clearTimeout(deviceRefreshPending);
+  deviceRefreshPending=setTimeout(async()=>{
+    deviceRefreshPending=null;
+    const missing=await refreshDevices()||[];
+    if(!engine && !nodes)return;
+    if(missing.length){
+      const kinds=missing.map(k=>k==='audiooutput'?'speaker':'microphone').join(' and ');
+      needsRecovery('Selected '+kinds+' disappeared. Choose the available devices and reconnect; live voice is muted.');
+      return;
+    }
+    // Even unchanged IDs may point to another physical device after default changes.
+    if(nodes || speakerOn)needsRecovery('Audio devices changed. Check QuadCast and Pebble V3, then reconnect before enabling live voice.');
+    else if(engine)ui.pathInfo.textContent='Audio devices changed. Check the speaker output before playback.';
+  },220);
+});
+window.addEventListener('pagehide',event=>{
+  monitorMute();
+  if(event.persisted){ui.songPlayer.pause();stopMic();return;}
+  shutdownInProgress=true;
+  stopRecording();
+  if(stream)stream.getTracks().forEach(t=>t.stop());
+  if(ctx)ctx.close().catch(()=>{});
+  queue.forEach(t=>URL.revokeObjectURL(t.url));resetTakeUrl();
+  if(lyricFrame!==null)cancelAnimationFrame(lyricFrame);
+});
+window.addEventListener('pageshow',event=>{if(event.persisted)needsRecovery('This tab was restored from browser history. Reconnect audio; voice monitoring remains off.');});
+ui.echoTime.disabled=ui.echoSync.value!=='manual';setKnobLabels();updateTestUi();renderQueue();updateStage();updatePerformanceBar();refreshDevices();
+if(!window.isSecureContext) info('This page is not a secure context. If the microphone fails, run it at http://localhost:8765.','error');
+</script>
+</body>
+</html>
