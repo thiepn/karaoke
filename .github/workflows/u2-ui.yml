@@ -1,0 +1,29 @@
+name: ROOMTONE U2 Browser Smoke
+on:
+  push:
+    branches: ["feat/u2-after-hours-workspaces"]
+  pull_request:
+    branches: ["feat/u1-after-hours-stage"]
+permissions:
+  contents: read
+concurrency:
+  group: roomtone-u2-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  chromium:
+    name: Offline Chromium responsive regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Chromium test runner
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Assert U1 and U2 workspaces without microphone hardware
+        run: |
+          python tests/u2_smoke.py
