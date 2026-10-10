@@ -17,6 +17,10 @@ with sync_playwright() as p:
         context=browser.new_context(viewport={'width':w,'height':h},accept_downloads=True)
         page=context.new_page(); errors=[]
         page.on('pageerror',lambda e:errors.append(str(e)))
+        # This runtime blocks direct navigation; an in-memory storage shim is used only
+        # for testing saved-settings UI because about:blank denies localStorage.
+        page.evaluate('''(()=>{const data=new Map();Object.defineProperty(window,'localStorage',
+          {configurable:true,value:{setItem(k,v){data.set(k,String(v))},getItem(k){return data.get(k)??null},removeItem(k){data.delete(k)}}});})()''')
         page.set_content(ROOT.joinpath('index.html').read_text(),wait_until='load');page.wait_for_timeout(250)
         assert page.locator('#rtStagePanel').is_visible(),f'Stage hidden {w}'
         assert page.locator('#rtSongsPanel').is_hidden()
@@ -48,6 +52,21 @@ with sync_playwright() as p:
         assert page.locator('#micGain').input_value()=='115'
         page.select_option('#rtQuickPreset','studio')
         assert 'active' in (page.locator('[data-preset="studio"]').get_attribute('class') or '')
+        # Settings restore and reset are programmatic writes in the legacy engine.
+        page.locator('[data-rt-view="studio"]').click()
+        page.locator('#saveSound').click()
+        page.locator('[data-rt-view="stage"]').click()
+        page.locator('#rtQuickMicGain').fill('145')
+        page.locator('[data-rt-view="studio"]').click()
+        page.locator('#loadSound').click()
+        page.locator('[data-rt-view="stage"]').click()
+        assert page.locator('#rtQuickMicGain').input_value()=='115'
+        assert page.locator('#rtQuickMicGainValue').inner_text()=='115%'
+        assert page.locator('#rtQuickPreset').input_value()=='custom'
+        page.locator('[data-rt-view="studio"]').click()
+        page.locator('#resetSound').click()
+        page.locator('[data-rt-view="stage"]').click()
+        assert page.locator('#rtQuickMicGain').input_value()=='100'
         page.locator('#rtAddSong').click()
         page.locator('#songFile').set_input_files({'name':'U1 sample.wav','mimeType':'audio/wav','buffer':SAMPLE})
         page.wait_for_timeout(450)
