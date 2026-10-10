@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#111517">
+  <meta name="theme-color" content="#0e1014">
   <meta name="description" content="A private, local karaoke studio with natural reverb, echo, vocal sound check, and recording. No uploads.">
-  <title>ROOMTONE — Karaoke Studio</title>
+  <title>ROOMTONE — After Hours Karaoke</title>
   <style>
     :root {color-scheme:dark; --bg:#101416; --panel:#1a2022; --panel2:#222a2c; --line:#3a4446; --ink:#edf1ef; --muted:#a2acac; --accent:#b8e079; --warning:#f6c978; --danger:#fd8b82; --radius:5px}
     * { box-sizing: border-box }
@@ -274,11 +274,192 @@
     .stage.focus-mode .performance-bar{width:100%;max-width:1180px;margin-left:auto;margin-right:auto}
     @media(max-width:600px){.recovery-banner{align-items:stretch;flex-direction:column}.recovery-banner .btn{align-self:flex-start}.performance-state{flex-basis:100%;margin-right:0}.performance-bar .btn{flex:1}}
   </style>
+
+  <style id="rt-after-hours-design">
+    /* U1 / AFTER HOURS — view presentation only. Original DSP, audio and local data code untouched. */
+    :root {color-scheme:dark;--bg:#0e1014;--panel:#181b21;--panel2:#21252d;--line:#30353e;--ink:#f1eee8;--muted:#a0a5b0;--accent:#afa1f4;--warning:#f3c688;--danger:#f68a8d;--radius:6px}
+    body{font:15px/1.5 'Segoe UI',Inter,system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink)}
+    .shell{max-width:1600px;padding:0 clamp(16px,3vw,52px) 45px;margin:auto;min-height:100dvh}
+    .rt-header{padding:18px 0;min-height:86px;gap:32px;position:sticky;top:0;z-index:40;background:var(--bg);border-bottom:1px solid #282c33;display:flex;flex-wrap:wrap}
+    .brand{flex-direction:column;gap:0;align-items:flex-start;flex-shrink:0}
+    .brand strong{font-size:19px;font-weight:850;letter-spacing:.13em;line-height:1.1}
+    .brand small{font-size:10px;letter-spacing:.16em;color:#858b99;margin-top:6px}
+    .rt-brand-mark,.rt-period{color:var(--accent)}
+    .rt-navigation{display:flex;align-items:center;gap:5px;margin:0 auto}
+    .rt-nav-button{border:0;min-height:40px;padding:10px 19px;border-radius:4px;background:transparent;color:#a7aab4;font-size:13px;font-weight:650;letter-spacing:.01em}
+    .rt-nav-button:hover{background:#1c2027;color:var(--ink)}
+    .rt-nav-button.is-active{background:#282936;color:#eee8ff}
+    .rt-nav-button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+    .rt-header .status{font-size:11px;letter-spacing:.035em;background:#191d24;border-color:#303641;padding:9px 11px}
+    .dot.live{background:#92dabd}
+    .rt-workspace{min-height:calc(100dvh - 158px)}
+    .rt-view[hidden]{display:none!important}
+    .rt-view{padding-top:clamp(25px,3vw,44px);animation:rtViewIn .19s ease both}
+    @keyframes rtViewIn{from{opacity:.5;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+    .rt-view-title{display:flex;justify-content:space-between;align-items:end;gap:16px;margin-bottom:30px}
+    .rt-view-title h1{font-size:clamp(26px,3.2vw,46px);font-weight:730;letter-spacing:-.055em;margin:5px 0 0;line-height:1.1}
+    .rt-view-title>p{max-width:370px;text-align:right;color:#8f96a4;font-size:13px}
+    .rt-kicker{font-size:10px;font-weight:750;letter-spacing:.19em;color:#9d92d9}
+    .rt-stage-layout{display:grid;grid-template-columns:minmax(0,1fr) clamp(275px,23vw,345px);gap:16px;align-items:stretch;min-height:min(680px,76dvh)}
+    .stage{padding:clamp(18px,2.2vw,33px);margin:0;border:1px solid #353b49;background:#161922;min-width:0;display:flex;flex-direction:column;justify-content:space-between;min-height:600px}
+    .stage-top{align-items:flex-start;gap:14px}
+    .stage-eyebrow{color:#a69be6;font-size:10px;letter-spacing:.16em}
+    .stage-title{font-size:clamp(22px,2.25vw,34px);font-weight:700;letter-spacing:-.045em;margin-top:7px}
+    .stage-sub{max-width:630px;color:#9196a2;font-size:12px;line-height:1.6}
+    .stage-tools{gap:8px}
+    .stage-tools .btn{min-height:37px}
+    .lyrics-screen{flex:1;min-height:300px;padding:36px 8px;gap:20px}
+    .lyric-prev,.lyric-next{color:#727989;font-size:clamp(15px,1.65vw,23px);max-width:90%;min-height:28px}
+    .lyric-current{color:#f6f3fa;font-size:clamp(32px,3.4vw,62px);letter-spacing:-.052em;font-weight:700;line-height:1.18;max-width:860px;min-height:78px}
+    .lyric-current.placeholder{color:#777f93;font-size:clamp(21px,2.5vw,32px);font-weight:550}
+    .performance-bar{order:5;background:#1c212c;border:1px solid #323847;padding:12px;margin-top:22px;gap:9px;border-radius:4px}
+    .performance-state{font-size:11px;letter-spacing:.01em;color:#a6acb9}
+    .performance-bar .btn{background:#2b303b;border-color:#434a57;color:#e0e5ed;font-size:11px;padding:7px 10px;min-height:34px}
+    .performance-bar .btn-danger{background:#392629;color:#f9a6a6;border-color:#a4565d}
+    .performance-bar .btn-main{background:#afa1f4;color:#17141e}
+    .stage-bottom{border-color:#343a45;padding-top:23px;margin-top:auto}
+    .stage-controls{gap:12px;justify-content:center;margin-bottom:16px}
+    .stage-controls .btn{border:1px solid #3c424f;background:#272c36;padding:10px 14px;min-width:84px;font-size:12px}
+    .stage-controls .stage-play{background:var(--accent);border-color:var(--accent);color:#141217;min-width:110px;font-weight:750}
+    .stage-hint{margin-left:auto;font-size:11px;max-width:190px;color:#838d9c}
+    .stage-timeline{flex-wrap:wrap;gap:10px}
+    .stage-time{color:#9b9eac}
+    .slider,input[type=range]{accent-color:var(--accent)}
+    .loop-bar{background:transparent;border-color:#303743}
+    .stage-advanced{color:#9da4b1}
+    .stage.focus-mode{background:#12151d;z-index:100}
+    .stage.focus-mode .lyrics-screen{min-height:160px}
+    .stage.focus-mode .lyric-current{font-size:clamp(36px,5.8vw,92px)}
+    .rt-stage-sidecar{display:grid;grid-template-rows:minmax(240px,1.2fr) minmax(320px,1fr);gap:16px;min-width:0}
+    .rt-side-panel{background:#191d24;border:1px solid #2b3039;padding:22px 20px;min-width:0;display:flex;flex-direction:column}
+    .rt-side-heading{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:21px}
+    .rt-side-heading h2{font-size:21px;letter-spacing:-.035em;margin-top:5px;font-weight:710}
+    #rtQueueCount{font-size:12px;font-weight:550;color:#838c99;margin-left:4px}
+    .rt-quiet-action{font-size:11px;background:transparent;color:#c9c2f5;border:0;padding:8px 2px;font-weight:650;white-space:nowrap}
+    .rt-quiet-action:hover{text-decoration:underline}
+    .rt-queue-mirror{padding:0;margin:0;list-style:none;flex:1;overflow:auto;max-height:315px;scrollbar-color:#50515e transparent}
+    .rt-queue-mirror li{padding:11px 0;border-bottom:1px solid #2c3039;font-size:12px;color:#e2e1e7}
+    .rt-queue-mirror li.current{border-left:2px solid #afa1f4;padding-left:11px;background:#232431}
+    .rt-queue-mirror li.rt-empty{font-size:12px;color:#89909e;line-height:1.65;border:0;padding:16px 0}
+    .rt-queue-choice{display:flex;align-items:center;gap:9px;width:100%;border:0;background:none;text-align:left;padding:2px;color:inherit;min-width:0;font-size:12px;cursor:pointer}
+    .rt-queue-choice span{display:block;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .rt-queue-index{font:11px ui-monospace,monospace;color:#8a90a0;flex:none}
+    .rt-queue-mirror li.current .rt-queue-choice{color:#c8bafa}
+    .rt-side-link{text-align:left;border:0;border-top:1px solid #343841;padding:16px 0 0;background:none;color:#ac9ff1;font-size:12px;font-weight:680;margin-top:12px}
+    .rt-mix-control{margin:0 0 20px}
+    .rt-mix-label{font-size:12px;color:#b0b6c2;display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px}
+    .rt-mix-label output{font-variant-numeric:tabular-nums;color:#d7d2ea;font-size:11px}
+    .rt-side-mix input[type=range]{display:block;width:100%;height:20px;margin:0;cursor:pointer}
+    #rtQuickPreset{margin-top:7px;min-height:42px;font-size:12px;background:#242934;color:#e7e1f5;border-color:#464553}
+    .rt-mix-hint{font-size:11px;color:#89929f;line-height:1.6;margin-top:auto;padding-top:17px}
+    .rt-page-content{display:grid;gap:18px;grid-template-columns:minmax(0,1fr)}
+    .rt-page-content>.card,.rt-page-content>.tools,.rt-page-content>.grid,.rt-page-content>.intro,.rt-page-content>.notice,.rt-page-content>.readiness{margin:0;max-width:none}
+    .rt-page-content>.card{padding:clamp(18px,2.2vw,30px);border:1px solid #303641;background:#191d24}
+    .rt-page-content .card{background:#191d24;border-color:#303641}
+    .rt-page-content .grid{gap:18px}
+    .rt-page-content .tools{display:block}
+    .rt-page-content .stage{display:none}
+    .rt-page-content .intro{padding:10px 0 0}
+    .rt-page-content .intro h1{font-size:24px}
+    .rt-page-content .intro>aside{display:none}
+    .rt-page-content .notice{background:#29231f;border-color:#554537}
+    .rt-page-content .readiness{border-color:#303b43;background:#1c2228}
+    .rt-page-content .readiness-item{background:#171b21;border-color:#384049}
+    .rt-page-content .readiness-item.ok{color:#9bd7b5}
+    .rt-page-content .readiness-head strong{color:#a99bf7}
+    .rt-page-content .studio{background:#191d24}
+    .rt-page-content .record-box{background:#1d222b;border:1px solid #343b47;padding:24px}
+    .rt-studio-record{display:grid;gap:14px}
+    .rt-studio-record>h2{font-size:18px;font-weight:700}
+    .rt-page-content .queue-list{max-height:300px}
+    .rt-page-content .queue-item.current{background:#28283a}
+    .rt-page-content .queue-item.current .queue-play{color:#b5a4ff}
+    .rt-page-content .preset.active{border-color:var(--accent);color:#e7e0ff;background:#353149}
+    .rt-page-content .card-head h2{letter-spacing:-.02em}
+    .rt-page-content .stage:hover{outline:0}
+    .rt-page-content #hardwareQa summary{color:#f3eee8}
+    .rt-page-content .hardware-checks label{background:#252a34}
+    .callout.success{color:#b8dbaa}
+    .btn-main{background:var(--accent);color:#16131b;border-color:var(--accent)}
+    .btn-main:hover:not(:disabled){background:#d0c8ff;border-color:#d0c8ff}
+    .btn-danger,.mute{color:var(--danger);border-color:#a75560}
+    .btn{border-color:#49505b;background:#2a2f39;color:#e7e6ef}
+    .btn:hover:not(:disabled){border-color:#ada2e1}
+    .file-label{border-color:#505561;background:#2b2d3b;color:#e2dcff}
+    .foot{margin-top:36px}
+    .rt-mobile-mute{display:none}
+    @media (max-width:1100px){
+      .rt-stage-layout{grid-template-columns:minmax(0,1fr) 275px}
+      .stage{padding:20px;min-height:580px}
+      .rt-stage-sidecar{grid-template-rows:minmax(220px,1fr) minmax(300px,1fr)}
+      .stage-tools{flex-direction:column}
+      .stage-hint{display:none}
+    }
+    @media (max-width:850px){
+      .rt-header{gap:12px;justify-content:space-between}
+      .rt-header .status{order:2}
+      .rt-navigation{order:3;width:100%;justify-content:space-between;margin:0}
+      .rt-nav-button{flex:1}
+      .rt-stage-layout{grid-template-columns:1fr}
+      .stage{min-height:540px}
+      .lyrics-screen{min-height:270px}
+      .rt-stage-sidecar{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto;gap:12px}
+      .rt-side-panel{min-height:290px}
+      .rt-view-title>p{font-size:12px}
+    }
+    @media (max-width:600px){
+      .shell{padding:0 14px 88px}
+      .rt-header{top:0;min-height:0;padding:11px 0 9px;gap:7px}
+      .brand strong{font-size:17px}.brand small{font-size:8px;margin-top:3px}
+      .rt-header .status{font-size:10px;padding:6px 9px}
+      .rt-navigation{gap:2px}
+      .rt-nav-button{font-size:12px;min-height:36px;padding:7px 9px}
+      .rt-view{padding-top:23px}
+      .rt-view-title{align-items:flex-start;display:block;margin-bottom:19px}
+      .rt-view-title h1{font-size:31px}
+      .rt-view-title>p{max-width:none;text-align:left;margin-top:9px}
+      .stage{padding:16px 14px 14px;min-height:520px}
+      .stage-title{font-size:21px}
+      .stage-top{display:flex;flex-wrap:wrap}
+      .stage-tools{flex-direction:row;justify-content:flex-end;width:100%}
+      .stage-tools .btn{font-size:11px;min-height:34px;padding:7px 10px}
+      .lyrics-screen{padding:26px 7px;min-height:230px;gap:14px}
+      .lyric-current{font-size:clamp(29px,8.3vw,43px);min-height:66px;line-height:1.23}
+      .lyric-prev,.lyric-next{font-size:15px;min-height:22px}
+      .stage-bottom{padding-top:13px}
+      .stage-controls .btn{font-size:11px;min-width:0;flex:1;padding:10px}
+      .stage-controls .stage-play{flex:1.2}
+      .stage-timeline{gap:7px}
+      .stage-time{font-size:10px}
+      .performance-bar{padding:9px;gap:6px;margin-top:13px}
+      .performance-bar .btn{font-size:11px;flex:1;min-width:0}
+      .performance-state{flex-basis:100%}
+      .stage-advanced{gap:9px;margin-top:11px}
+      .rt-stage-sidecar{grid-template-columns:1fr}
+      .rt-side-panel{min-height:0;padding:18px}
+      .rt-side-queue{min-height:180px}
+      .rt-side-mix{min-height:220px}
+      .rt-queue-mirror{max-height:165px}
+      .rt-page-content .grid{grid-template-columns:1fr}
+      .rt-page-content .card{padding:18px 14px}
+      .rt-mobile-mute{display:block;position:fixed;bottom:12px;left:14px;right:14px;z-index:70;border:1px solid #9d5960;border-radius:4px;background:#41272c;color:#ffbabb;min-height:44px;font-size:12px;font-weight:800;letter-spacing:.06em;box-shadow:0 3px 12px #0008}
+      body.in-focus .rt-mobile-mute{z-index:2500}
+      .stage.focus-mode{padding:20px 12px 66px}
+      .foot{margin-bottom:0}
+    }
+    @media (prefers-reduced-motion:reduce){.rt-view{animation:none}}
+  </style>
 </head>
 <body>
 <div class="shell">
-  <header>
-    <div class="brand"><strong>ROOMTONE</strong><small>Personal karaoke studio / v1.0</small></div>
+  <header class="rt-header">
+    <div class="brand"><strong>ROOMTONE<span class="rt-brand-mark">.</span></strong><small>AFTER HOURS / KARAOKE STUDIO</small></div>
+    <nav class="rt-navigation" aria-label="ROOMTONE workspace">
+      <button type="button" class="rt-nav-button is-active" data-rt-view="stage" aria-current="page">Stage</button>
+      <button type="button" class="rt-nav-button" data-rt-view="songs">Songs</button>
+      <button type="button" class="rt-nav-button" data-rt-view="studio">Studio</button>
+      <button type="button" class="rt-nav-button" data-rt-view="setup">Setup</button>
+    </nav>
     <div class="status" role="status"><span id="dot" class="dot"></span><span id="status">NOT CONNECTED</span></div>
   </header>
   <div class="intro">
@@ -300,6 +481,10 @@
     <div><strong>Audio needs attention</strong><p id="recoveryMessage">A device or playback issue interrupted audio. Speaker monitoring is muted.</p></div>
     <button id="recoverBtn" class="btn btn-small" type="button">Reconnect audio</button>
   </div>
+  <main class="rt-workspace" id="rtWorkspace">
+    <section class="rt-view rt-stage-view" id="rtStagePanel" data-rt-panel="stage" aria-label="Karaoke stage">
+      <div class="rt-view-title"><div><span class="rt-kicker">YOUR PERFORMANCE SPACE</span><h1>Make this one yours<span class="rt-period">.</span></h1></div><p>Load a track, find your rhythm, sing. Everything stays on your device.</p></div>
+      <div class="rt-stage-layout">
   <section class="stage card" id="stage" aria-label="Karaoke performance stage">
     <div class="stage-top">
       <div><span class="stage-eyebrow">Now singing / Stage</span><h2 class="stage-title" id="stageTitle">No song loaded</h2><p class="stage-sub" id="stageSub">Add an audio track and an optional matching .lrc lyrics file to get started.</p></div>
@@ -334,6 +519,37 @@
       <div class="stage-advanced"><label class="inline-label"><input id="autoNext" type="checkbox" checked> Auto-play next song</label><div class="offset-wrap"><label for="lyricsOffset">Lyrics timing</label><input id="lyricsOffset" type="range" class="slider" min="-2000" max="2000" step="50" value="0" aria-label="Lyrics timing adjustment"><output id="lyricsOffsetValue">0 ms</output></div></div>
     </div>
   </section>
+      <aside class="rt-stage-sidecar" aria-label="Song queue and quick mix">
+        <section class="rt-side-panel rt-side-queue" aria-labelledby="rtQueueTitle">
+          <div class="rt-side-heading"><div><span class="rt-kicker">SETLIST</span><h2 id="rtQueueTitle">Up next <span id="rtQueueCount">00</span></h2></div><button type="button" id="rtAddSong" class="rt-quiet-action">+ Add</button></div>
+          <ol id="rtQueueMirror" class="rt-queue-mirror" aria-label="Stage song queue"><li class="rt-empty">No songs yet. Add a local audio file to begin.</li></ol>
+          <button type="button" id="rtOpenSongs" class="rt-side-link">Manage songs <span aria-hidden="true">↗</span></button>
+        </section>
+        <section class="rt-side-panel rt-side-mix" aria-labelledby="rtMixTitle">
+          <div class="rt-side-heading"><div><span class="rt-kicker">LIVE CONTROL</span><h2 id="rtMixTitle">Quick mix</h2></div><button type="button" id="rtOpenStudio" class="rt-quiet-action">Full mixer ↗</button></div>
+          <div class="rt-mix-control"><div class="rt-mix-label"><label for="rtQuickMicGain">Microphone</label><output id="rtQuickMicGainValue">100%</output></div><input id="rtQuickMicGain" type="range" min="20" max="220" step="5" value="100" aria-label="Microphone amplification"></div>
+          <div class="rt-mix-control"><div class="rt-mix-label"><label for="rtQuickMusic">Backing track</label><output id="rtQuickMusicValue">70%</output></div><input id="rtQuickMusic" type="range" min="0" max="100" step="1" value="70" aria-label="Backing track volume"></div>
+          <label class="rt-mix-label" for="rtQuickPreset">Vocal preset</label>
+          <select id="rtQuickPreset"><option value="clean">Clean</option><option value="studio">Studio</option><option value="karaoke" selected>Karaoke</option><option value="hall">Hall</option><option value="custom" disabled>Custom settings</option></select>
+          <p class="rt-mix-hint">Monitoring stays off until you explicitly enable it. Lower physical speaker volume before listening.</p>
+        </section>
+      </aside>
+      </div>
+    </section>
+    <section class="rt-view rt-library-view" id="rtSongsPanel" data-rt-panel="songs" aria-labelledby="rtSongsHeading" hidden>
+      <div class="rt-view-title"><div><span class="rt-kicker">YOUR LOCAL LIBRARY</span><h1 id="rtSongsHeading">Songs &amp; lyrics<span class="rt-period">.</span></h1></div><p>Build your setlist and time each line. Files stay on this device.</p></div>
+      <div id="rtSongsContent" class="rt-page-content"></div>
+    </section>
+    <section class="rt-view rt-studio-view" id="rtStudioPanel" data-rt-panel="studio" aria-labelledby="rtStudioHeading" hidden>
+      <div class="rt-view-title"><div><span class="rt-kicker">SHAPE YOUR SOUND</span><h1 id="rtStudioHeading">Vocal studio<span class="rt-period">.</span></h1></div><p>Dial in your sound, record and review a take.</p></div>
+      <div id="rtStudioContent" class="rt-page-content"></div>
+    </section>
+    <section class="rt-view rt-setup-view" id="rtSetupPanel" data-rt-panel="setup" aria-labelledby="rtSetupHeading" hidden>
+      <div class="rt-view-title"><div><span class="rt-kicker">AUDIO DEVICES &amp; SAFETY</span><h1 id="rtSetupHeading">Make it yours<span class="rt-period">.</span></h1></div><p>Connect your devices and calibrate at a safe volume.</p></div>
+      <div id="rtSetupContent" class="rt-page-content"></div>
+    </section>
+  </main>
+  <button type="button" id="rtMobileMute" class="rt-mobile-mute" aria-label="Emergency mute live microphone monitoring">Mute voice · Esc</button>
   <section class="grid" aria-label="Audio devices">
     <div class="card">
       <div class="card-head"><h2>01 / Microphone</h2><span class="tag">INPUT</span></div>
@@ -1752,5 +1968,92 @@ window.addEventListener('pageshow',event=>{if(event.persisted)needsRecovery('Thi
 ui.echoTime.disabled=ui.echoSync.value!=='manual';setKnobLabels();updateTestUi();renderQueue();updateStage();updatePerformanceBar();refreshDevices();
 if(!window.isSecureContext) info('This page is not a secure context. If the microphone fails, run it at http://localhost:8765.','error');
 </script>
+<script id="rt-after-hours-behavior">
+'use strict';
+// U1: UI composition only. Reuse existing DOM nodes and events; do not duplicate the audio pipeline.
+(()=>{
+  const $=id=>document.getElementById(id);
+  const sections={stage:$('rtStagePanel'),songs:$('rtSongsPanel'),studio:$('rtStudioPanel'),setup:$('rtSetupPanel')};
+  const shell=document.querySelector('.shell');
+  const originalTools=Array.from(document.querySelectorAll('section.tools'))[0];
+  const audioDevices=document.querySelector('section.grid[aria-label="Audio devices"]');
+  const vocalEffects=originalTools?.querySelector(':scope > .card:first-child');
+  const backingTrack=originalTools?.querySelector(':scope > .card:nth-child(2)');
+  const records=backingTrack?.querySelector('.record-box');
+  const setup=$('rtSetupContent');
+  const songs=$('rtSongsContent');
+  const studio=$('rtStudioContent');
+  const setupParts=[document.querySelector('.intro'),document.querySelector('.notice'),document.querySelector('.readiness'),audioDevices,document.querySelector('section.lab'),$('hardwareQa')];
+  setupParts.filter(Boolean).forEach(part=>setup.append(part));
+  if(backingTrack)songs.append(backingTrack);
+  if($('lyricsStudio'))songs.append($('lyricsStudio'));
+  if(vocalEffects)studio.append(vocalEffects);
+  if(records){
+    const recordPanel=document.createElement('section');recordPanel.className='rt-studio-record';
+    const label=document.createElement('h2');label.textContent='Record your performance';recordPanel.append(label,records);studio.append(recordPanel);
+  }
+  originalTools?.remove();
+  // Keep all source control IDs and their event listeners. The original localStorage keys are untouched.
+  function switchView(view,focusHeading=false){
+    if(!sections[view])return;
+    for(const [name,panel] of Object.entries(sections))panel.hidden=name!==view;
+    document.querySelectorAll('[data-rt-view]').forEach(btn=>{
+      const active=btn.dataset.rtView===view;
+      btn.classList.toggle('is-active',active);
+      if(active)btn.setAttribute('aria-current','page');else btn.removeAttribute('aria-current');
+    });
+    shell.dataset.rtCurrentView=view;
+    if(focusHeading){
+      const heading=sections[view].querySelector('h1');
+      if(heading){heading.tabIndex=-1;heading.focus({preventScroll:true});}
+    }
+    if(!document.body.classList.contains('in-focus'))window.scrollTo({top:0,behavior:'instant'});
+  }
+  document.querySelectorAll('[data-rt-view]').forEach(btn=>btn.addEventListener('click',()=>switchView(btn.dataset.rtView,true)));
+  $('rtOpenSongs').addEventListener('click',()=>switchView('songs',true));
+  $('rtOpenStudio').addEventListener('click',()=>switchView('studio',true));
+  $('rtAddSong').addEventListener('click',()=>$('songFile').click());
+  $('rtMobileMute').addEventListener('click',()=>$('stagePanic').click());
+  // The original "Lyrics studio" jump is on the Stage. Make its destination visible
+  // before the original scrollIntoView handler runs.
+  $('jumpToStudio').addEventListener('click',()=>switchView('songs'),{capture:true});
+  function linkSlider(mirrorId,sourceId,labelId){
+    const mirror=$(mirrorId),source=$(sourceId),label=$(labelId);
+    const sync=()=>{mirror.value=source.value;label.textContent=source.value+'%'};
+    mirror.addEventListener('input',()=>{source.value=mirror.value;source.dispatchEvent(new Event('input',{bubbles:true}));});
+    source.addEventListener('input',sync);source.addEventListener('change',sync);sync();return sync;
+  }
+  const syncMic=linkSlider('rtQuickMicGain','micGain','rtQuickMicGainValue');
+  const syncMusic=linkSlider('rtQuickMusic','musicVolume','rtQuickMusicValue');
+  const preset=$('rtQuickPreset');
+  preset.addEventListener('change',()=>document.querySelector(`[data-preset="${preset.value}"]`)?.click());
+  const mirrorPreset=()=>{const active=document.querySelector('[data-preset].active');preset.value=active?active.dataset.preset:'custom';};
+  const presets=document.querySelector('.presets');
+  if(presets)new MutationObserver(mirrorPreset).observe(presets,{subtree:true,attributes:true,attributeFilter:['class']});
+  mirrorPreset();
+  for(const id of ['loadSound','resetSound'])$(id).addEventListener('click',()=>{syncMic();syncMusic();mirrorPreset();});
+  const queue=$('trackQueue'),mirror=$('rtQueueMirror'),count=$('rtQueueCount');
+  function syncQueue(){
+    const items=Array.from(queue.querySelectorAll('.queue-item'));
+    count.textContent=String(items.length).padStart(2,'0');
+    mirror.replaceChildren();
+    if(!items.length){const empty=document.createElement('li');empty.className='rt-empty';empty.textContent='No songs yet. Add a local audio file to begin.';mirror.append(empty);return;}
+    items.forEach((li,index)=>{
+      const item=document.createElement('li');item.className=li.classList.contains('current')?'current':'';
+      const button=document.createElement('button');button.type='button';button.className='rt-queue-choice';button.disabled=!!li.querySelector('button.queue-play')?.disabled;
+      const number=document.createElement('span');number.className='rt-queue-index';number.textContent=String(index+1).padStart(2,'0');
+      const title=document.createElement('span');title.textContent=li.querySelector('.queue-play')?.textContent?.trim()||`Song ${index+1}`;
+      button.append(number,title);button.title=title.textContent;
+      button.addEventListener('click',()=>queue.querySelectorAll('.queue-play')[index]?.click());
+      item.append(button);mirror.append(item);
+    });
+  }
+  const observer=new MutationObserver(syncQueue);
+  observer.observe(queue,{childList:true,subtree:true,attributes:true,attributeFilter:['class','disabled']});
+  syncQueue();
+  switchView('stage');
+})();
+</script>
+
 </body>
 </html>
