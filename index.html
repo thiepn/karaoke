@@ -530,7 +530,7 @@
           <div class="rt-mix-control"><div class="rt-mix-label"><label for="rtQuickMicGain">Microphone</label><output id="rtQuickMicGainValue">100%</output></div><input id="rtQuickMicGain" type="range" min="20" max="220" step="5" value="100" aria-label="Microphone amplification"></div>
           <div class="rt-mix-control"><div class="rt-mix-label"><label for="rtQuickMusic">Backing track</label><output id="rtQuickMusicValue">70%</output></div><input id="rtQuickMusic" type="range" min="0" max="100" step="1" value="70" aria-label="Backing track volume"></div>
           <label class="rt-mix-label" for="rtQuickPreset">Vocal preset</label>
-          <select id="rtQuickPreset"><option value="clean">Clean</option><option value="studio">Studio</option><option value="karaoke" selected>Karaoke</option><option value="hall">Hall</option></select>
+          <select id="rtQuickPreset"><option value="clean">Clean</option><option value="studio">Studio</option><option value="karaoke" selected>Karaoke</option><option value="hall">Hall</option><option value="custom" disabled>Custom settings</option></select>
           <p class="rt-mix-hint">Monitoring stays off until you explicitly enable it. Lower physical speaker volume before listening.</p>
         </section>
       </aside>
@@ -2021,16 +2021,17 @@ if(!window.isSecureContext) info('This page is not a secure context. If the micr
     const mirror=$(mirrorId),source=$(sourceId),label=$(labelId);
     const sync=()=>{mirror.value=source.value;label.textContent=source.value+'%'};
     mirror.addEventListener('input',()=>{source.value=mirror.value;source.dispatchEvent(new Event('input',{bubbles:true}));});
-    source.addEventListener('input',sync);source.addEventListener('change',sync);sync();
+    source.addEventListener('input',sync);source.addEventListener('change',sync);sync();return sync;
   }
-  linkSlider('rtQuickMicGain','micGain','rtQuickMicGainValue');
-  linkSlider('rtQuickMusic','musicVolume','rtQuickMusicValue');
+  const syncMic=linkSlider('rtQuickMicGain','micGain','rtQuickMicGainValue');
+  const syncMusic=linkSlider('rtQuickMusic','musicVolume','rtQuickMusicValue');
   const preset=$('rtQuickPreset');
   preset.addEventListener('change',()=>document.querySelector(`[data-preset="${preset.value}"]`)?.click());
-  const mirrorPreset=()=>{const active=document.querySelector('[data-preset].active');if(active&&preset.value!==active.dataset.preset)preset.value=active.dataset.preset;};
+  const mirrorPreset=()=>{const active=document.querySelector('[data-preset].active');preset.value=active?active.dataset.preset:'custom';};
   const presets=document.querySelector('.presets');
   if(presets)new MutationObserver(mirrorPreset).observe(presets,{subtree:true,attributes:true,attributeFilter:['class']});
   mirrorPreset();
+  for(const id of ['loadSound','resetSound'])$(id).addEventListener('click',()=>{syncMic();syncMusic();mirrorPreset();});
   const queue=$('trackQueue'),mirror=$('rtQueueMirror'),count=$('rtQueueCount');
   function syncQueue(){
     const items=Array.from(queue.querySelectorAll('.queue-item'));
