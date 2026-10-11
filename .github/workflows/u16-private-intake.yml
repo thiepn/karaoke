@@ -1,0 +1,92 @@
+name: ROOMTONE U16 Private Owner Witness Intake (NO_GO)
+on:
+  push:
+    branches:
+      - docs/u16-private-owner-witness-recovery
+  pull_request:
+    branches:
+      - docs/u15-u14-reconciliation-owner-handoff
+permissions:
+  contents: read
+jobs:
+  source-only:
+    name: Verify U16 exact-head private intake format without owner records
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact triggering SHA without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Enforce qualified U15 ancestry and five-file evidence-only change scope
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+          parent='df3dc97134492974f210c6f6b96f20877dd441d4'
+          assert subprocess.run(['git','merge-base','--is-ancestor',parent,'HEAD']).returncode==0
+          changed=set(subprocess.check_output(['git','diff','--name-only',parent,'HEAD'],text=True).splitlines())
+          allowed={'.github/workflows/u16-private-intake.yml',
+                   'scripts/u16_validate_private_witness.py',
+                   'tests/u16_private_witness_test.py',
+                   'docs/evidence/U16_HU7_LOCAL_INTAKE.template.json',
+                   'docs/U16_PRIVATE_EVIDENCE_RECOVERY.md'}
+          assert changed==allowed,changed
+          for path in ['index.html','u14.js','tests/u14_smoke.py',
+              '.github/workflows/u15-reconciliation.yml',
+              'tests/u15_reconciliation_smoke.py',
+              'docs/U15_U14_RECONCILIATION.md','docs/U15_OWNER_ACCEPTANCE_HANDOFF.md',
+              'scripts/u8_validate_evidence.py',
+              'docs/evidence/U8_HU7_ACCEPTANCE.template.json']:
+              assert Path(path).read_bytes()==subprocess.check_output(['git','show',f'{parent}:{path}'])
+          for n in ('u2','u3','u4','u5','u6','u7','u11','u12','u13'):
+              f=f'{n}.css'
+              assert Path(f).read_bytes()==subprocess.check_output(['git','show',f'{parent}:{f}'])
+              if n not in ('u11','u12','u13'):
+                  f=f'{n}.js'
+                  assert Path(f).read_bytes()==subprocess.check_output(['git','show',f'{parent}:{f}'])
+          print('PASS exact U15 parent and five U16-only files; playback/storage/owner template frozen')
+          PY
+      - name: Prepare Python standard library only
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Inherited U8 human evidence validator regression
+        run: python -m unittest discover -s tests -p 'u8_evidence_intake_test.py' -v
+      - name: U16 shape and malicious input negative regression
+        run: python -m unittest discover -s tests -p 'u16_private_witness_test.py' -v
+      - name: Reject synthetic acceptance and verify both blank templates NO_GO
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/u8_validate_evidence.py docs/evidence/U8_HU7_ACCEPTANCE.template.json > /tmp/u16-u8-blank.json
+          python scripts/u16_validate_private_witness.py docs/evidence/U16_HU7_LOCAL_INTAKE.template.json > /tmp/u16-blank.json
+          python - <<'PY'
+          import json
+          a=json.load(open('/tmp/u16-u8-blank.json'))
+          b=json.load(open('/tmp/u16-blank.json'))
+          assert a['claimed_observed']==0 and a['human_truth_verified'] is False
+          assert list(a['statuses'].values())==['NOT_TESTED']*7+['NOT_GIVEN']
+          assert a['release']=='NO_GO'
+          assert b['reported_test_ids_unverified']==[]
+          assert list(b['claimed_statuses_unverified'].values())==['NOT_TESTED']*7+['NOT_GIVEN']
+          assert b['human_truth_verified'] is False
+          assert b['owner_approval_verified'] is False and b['release']=='NO_GO'
+          assert b['candidate_source_sha']=='df3dc97134492974f210c6f6b96f20877dd441d4'
+          print('PASS no actual HU7 testimony and no real release approvals; U16 format-only intake')
+          PY
+      - name: Confirm no private artifacts or screenshots are published
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -d owner-private-records
+          test ! -e docs/evidence/owner-observations.json
+          test ! -e docs/evidence/U16_HU7_ACCEPTANCE.completed.json
+          echo 'PASS no owner records, screenshot golden, production or private artifacts published'
