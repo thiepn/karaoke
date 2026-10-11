@@ -37,6 +37,32 @@ class IntakeContract(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "untested"):
             validate(p)
 
+    def test_rejects_non_string_status_without_traceback(self):
+        # Reproduces original U8 TypeError for unhashable list/dict statuses.
+        # These are synthetic malformed inputs, never owner observations.
+        for invalid in ([], {}, ["PASS"], {"status": "PASS"}, None, 4):
+            with self.subTest(invalid=invalid):
+                payload = copy.deepcopy(self.base)
+                payload["tests"][0]["status"] = invalid
+                with self.assertRaisesRegex(ValueError, "unsupported status"):
+                    validate(payload)
+
+    def test_rejects_relabeling_a_required_human_scenario(self):
+        # Originally accepted a long but unrelated string, allowing a user
+        # to mark an easier task under a fixed HU7 test identifier.
+        payload = copy.deepcopy(self.base)
+        payload["tests"][0]["scenario"] = (
+            "Desktop test on arbitrary interface; skip Android safety checks"
+        )
+        with self.assertRaisesRegex(ValueError, "pinned human test"):
+            validate(payload)
+        payload = copy.deepcopy(self.base)
+        payload["tests"][7]["scenario"] = (
+            "General opinion rather than explicit owner release decision"
+        )
+        with self.assertRaisesRegex(ValueError, "pinned human test"):
+            validate(payload)
+
     def test_rejects_unauthorized_release_flag(self):
         p = copy.deepcopy(self.base)
         p["release_gate"] = "GO"

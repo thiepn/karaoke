@@ -1,0 +1,76 @@
+name: ROOMTONE U9 Witness Integrity Qualification (NO_GO)
+on:
+  push:
+    branches:
+      - docs/u9-witness-integrity-qualification
+  pull_request:
+    branches:
+      - docs/u8-human-evidence-intake
+permissions:
+  contents: read
+jobs:
+  intake:
+    name: Exact-head U9 intake safety, not human acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout exact U9 source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify U8 parent and restricted non-UI change scope
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+          parent='fe9208b20ed8136c895946754ae258962280c025'
+          assert subprocess.run(['git','merge-base','--is-ancestor',parent,'HEAD']).returncode==0
+          modified=set(subprocess.check_output(
+              ['git','diff','--name-only',parent,'HEAD'],text=True).splitlines())
+          permitted={
+              'scripts/u8_validate_evidence.py',
+              'tests/u8_evidence_intake_test.py',
+              'docs/U9_WITNESS_FINDINGS_QUALIFICATION.md',
+              '.github/workflows/u9-evidence.yml'
+          }
+          assert modified == permitted,modified
+          for path in (
+              'index.html','u5.css','u5.js','u6.css','u6.js','u7.css','u7.js',
+              'docs/evidence/U8_HU7_ACCEPTANCE.template.json',
+              'docs/U8_HUMAN_EVIDENCE_HANDOFF.md'):
+              source=subprocess.check_output(['git','show',f'{parent}:{path}'])
+              assert Path(path).read_bytes()==source,path+' modified'
+          print('PASS qualified current U8 ancestry and protected source unchanged')
+          PY
+      - name: Setup Python without external packages
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Regression tests of reproduced evidence integrity defects
+        run: python -m unittest discover -s tests -p 'u8_evidence_intake_test.py' -v
+      - name: Verify blank acceptance has zero observations
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/u8_validate_evidence.py docs/evidence/U8_HU7_ACCEPTANCE.template.json > /tmp/roomtone-u9-validation.json
+          python - <<'PY'
+          import json
+          p=json.load(open('/tmp/roomtone-u9-validation.json'))
+          assert p['claimed_observed']==0
+          assert p['human_truth_verified'] is False
+          assert p['release']=='NO_GO'
+          assert len(p['statuses'])==8
+          assert list(p['statuses'].values())==['NOT_TESTED']*7+['NOT_GIVEN']
+          print('PASS all 8 human acceptance gates remain untested/unapproved')
+          PY
+      - name: Report non-release outcome
+        run: |
+          echo 'U9 VALIDATOR REGRESSIONS ONLY: no real Android, browser, owner, or AT tests.'
+          echo 'PRODUCTION NO_GO; no merge, deploy, screenshots or user data processed.'

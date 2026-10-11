@@ -15,6 +15,17 @@ import sys
 
 QUALIFIED_U7 = "1c7dd8f10d2f2fcccf1ac9809f1f9047dbb4666a"
 EXPECTED = [f"HU7-{n:02d}" for n in range(1, 9)]
+# Fixed requirements; owner observations belong in 'observation', not revised scenarios.
+SCENARIOS = {
+    "HU7-01": "Android Chrome portrait Stage: in-flow Queue/Mixer, sticky navigation Mute, no Play/Next occlusion, focus and scroll",
+    "HU7-02": "Android Chrome Queue/Mixer open/close and keyboard or tap focus recovery",
+    "HU7-03": "Android Chrome Songs search, filters, and synthetic local LRC without microphone",
+    "HU7-04": "Samsung Internet Stage, Queue/Mixer and emergency Mute visibility",
+    "HU7-05": "Desktop Chrome Stage, library, fullscreen lyrics, contrast and queue",
+    "HU7-06": "Physical keyboard: Tab, Shift+Tab, Enter, Space, Escape and focus return",
+    "HU7-07": "Actual assistive technology: TalkBack/NVDA announcements, focus and filter semantics",
+    "HU7-08": "Explicit owner visual/release decision, separate from automated tests",
+}
 KEYS = {
     "id", "scenario", "status", "observer", "observed_at", "device",
     "browser", "observation", "attests_direct_observation",
@@ -54,11 +65,11 @@ def validate(payload: object) -> dict:
             raise ValueError(f"{case.get('id')}: unexpected/missing fields")
         test_id = case["id"]
         scenario = case["scenario"]
-        if not isinstance(scenario, str) or len(scenario.strip()) < 20:
-            raise ValueError(f"{test_id}: scenario lacks a useful description")
+        if not isinstance(scenario, str) or scenario != SCENARIOS[test_id]:
+            raise ValueError(f"{test_id}: scenario differs from the pinned human test requirement")
         status = case["status"]
         allowed = {"NOT_GIVEN", "APPROVED", "REJECTED"} if test_id == "HU7-08" else {"NOT_TESTED", "PASS", "FAIL"}
-        if status not in allowed:
+        if not isinstance(status, str) or status not in allowed:
             raise ValueError(f"{test_id}: unsupported status {status!r}")
         missing = status in ("NOT_TESTED", "NOT_GIVEN")
         fields = ("observer", "observed_at", "device", "browser", "observation",
