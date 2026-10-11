@@ -1,0 +1,107 @@
+name: ROOMTONE U15 Modal Lifecycle & Accessibility (NO_GO)
+on:
+  push:
+    branches:
+      - feat/u15-modal-lifecycle-browser-hardening
+  pull_request:
+    branches:
+      - feat/u14-focus-keyboard-containment
+permissions:
+  contents: read
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Exact U14 parent and permitted source only
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          python - <<'PY'
+          import subprocess
+          from pathlib import Path
+          parent='e752702557c63a51b75a7972fc26d239f8a3dbd3'
+          assert subprocess.run(['git','merge-base','--is-ancestor',parent,'HEAD']).returncode==0
+          changed=set(subprocess.check_output(['git','diff','--name-only',parent,'HEAD'],text=True).splitlines())
+          allowed={'index.html','u15.js','tests/u15_smoke.py',
+                   '.github/workflows/u15-modal.yml','docs/U15_MODAL_LIFECYCLE.md'}
+          assert changed==allowed,changed
+          if 'index.html' in changed:
+            prior=subprocess.check_output(['git','show',parent+':index.html'],text=True)
+            current=Path('index.html').read_text(encoding='utf-8')
+            assert current.replace('<script defer src="u15.js"></script>\n','')==prior
+            assert current.count('src="u15.js"')==1
+          for x in ('u2.js','u3.js','u4.js','u5.js','u6.js','u7.js','u14.js',
+                    'u2.css','u3.css','u4.css','u5.css','u6.css','u7.css',
+                    'u11.css','u12.css','u13.css',
+                    'docs/evidence/U8_HU7_ACCEPTANCE.template.json',
+                    'scripts/u8_validate_evidence.py','tests/u8_evidence_intake_test.py'):
+            assert Path(x).read_bytes()==subprocess.check_output(['git','show',f'{parent}:{x}']),x
+          print('PASS exact U14 ancestry and protected player/audio/evidence source unchanged')
+          PY
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install synthetic Chromium only
+        run: |
+          python -m pip install --disable-pip-version-check playwright==1.55.0
+          python -m playwright install --with-deps chromium
+      - name: U15 actual modal and cross-view keyboard qualification
+        run: python tests/u15_smoke.py
+      - name: Inherited U3 to U14 Chromium regressions
+        run: |
+          python tests/u3_smoke.py
+          python tests/u4_smoke.py
+          python tests/u5_smoke.py
+          python tests/u6_smoke.py
+          python tests/u7_smoke.py
+          python tests/u11_smoke.py
+          python tests/u12_smoke.py
+          python tests/u13_smoke.py
+          python tests/u14_smoke.py
+      - name: Verify original screenshot hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          for phase in u4 u5 u6 u7 u11 u12 u13 u14 u15; do
+            (cd "$phase-evidence" && sha256sum --check sha256.txt)
+          done
+          test "$(find u15-evidence -maxdepth 1 -name 'u15-*.png' | wc -l)" = 12
+      - name: Preserve human gate truth and production NO_GO
+        shell: bash
+        run: |
+          python scripts/u8_validate_evidence.py docs/evidence/U8_HU7_ACCEPTANCE.template.json > /tmp/u15-human.json
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/u15-human.json'))
+          assert d['claimed_observed']==0 and d['human_truth_verified'] is False
+          assert d['release']=='NO_GO'
+          assert list(d['statuses'].values())==['NOT_TESTED']*7+['NOT_GIVEN']
+          print('PASS all HU7 owner gates open, production NO_GO')
+          PY
+      - name: Retain original synthetic screenshots (never owner approval)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: roomtone-u15-original-chromium-evidence
+          retention-days: 30
+          if-no-files-found: warn
+          path: |
+            u15-evidence/
+            u14-evidence/
+            u13-evidence/
+            u12-evidence/
+            u11-evidence/
+            u7-evidence/
+            u6-evidence/
+            u5-evidence/
+            u4-evidence/
+            u3-*.png
