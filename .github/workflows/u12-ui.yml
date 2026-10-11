@@ -1,0 +1,120 @@
+name: ROOMTONE U12 Stage Library Density Qualification (NO_GO)
+on:
+  push:
+    branches:
+      - feat/u12-stage-library-density
+  pull_request:
+    branches:
+      - feat/u11-after-hours-ui-polish
+permissions:
+  contents: read
+jobs:
+  visual:
+    name: U12 exact-head browser visual and source-only gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact U12 head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify U11 qualified parent and unchanged playback/safety/data
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+          parent='c2f6ac9d68e0c26ad5d5aa19fa194c13d7a43bde'
+          assert subprocess.run(['git','merge-base','--is-ancestor',parent,'HEAD'],check=False).returncode==0
+          changed=set(subprocess.check_output(['git','diff','--name-only',parent,'HEAD'],text=True).splitlines())
+          allowed={'index.html','u12.css','tests/u12_smoke.py',
+                   '.github/workflows/u12-ui.yml','docs/U12_VISUAL_AUDIT.md'}
+          assert changed==allowed,changed
+          original=subprocess.check_output(['git','show',parent+':index.html'],text=True)
+          current=Path('index.html').read_text()
+          assert current.replace('  <link rel="stylesheet" href="u12.css">\n','')==original
+          assert current.count('href="u12.css"')==1
+          assert 'src="u12.js"' not in current
+          for n in ('u2','u3','u4','u5','u6','u7','u11'):
+              path=f'{n}.css'
+              assert current.count(f'href="{path}"')==1
+              assert Path(path).read_bytes()==subprocess.check_output(['git','show',f'{parent}:{path}'])
+              if n!='u11':
+                  js=f'{n}.js'
+                  assert current.count(f'src="{js}"')==1
+                  assert Path(js).read_bytes()==subprocess.check_output(['git','show',f'{parent}:{js}'])
+          for path in ('scripts/u8_validate_evidence.py','tests/u8_evidence_intake_test.py',
+                       'docs/evidence/U8_HU7_ACCEPTANCE.template.json'):
+              assert Path(path).read_bytes()==subprocess.check_output(['git','show',f'{parent}:{path}'])
+          print('PASS U11 exact ancestry and stylesheet-only HTML; original DSP/player/human gates frozen')
+          PY
+      - name: Configure Python and synthetic Chromium
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install browser test dependency only
+        run: |
+          python -m pip install --disable-pip-version-check playwright==1.55.0
+          python -m playwright install --with-deps chromium
+      - name: Inherited U3 keyboard and workspace regression
+        run: python tests/u3_smoke.py
+      - name: Inherited U4 keyboard and recording surface
+        run: python tests/u4_smoke.py
+      - name: Inherited U5 stage and library
+        run: python tests/u5_smoke.py
+      - name: Inherited U6 filters and accessibility
+        run: python tests/u6_smoke.py
+      - name: Inherited U7 emergency mute, focus and layout
+        run: python tests/u7_smoke.py
+      - name: Inherited U11 mobile Songs Studio and responsiveness
+        run: python tests/u11_smoke.py
+      - name: U12 full-width library and focus scroll browser qualification
+        run: python tests/u12_smoke.py
+      - name: Verify complete original screenshot SHA256 manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for phase in u4 u5 u6 u7 u11 u12; do
+            case "$phase" in
+              u4) count=12 ;;
+              u5) count=15 ;;
+              u6|u7|u12) count=16 ;;
+              u11) count=14 ;;
+            esac
+            test "$(find "$phase-evidence" -maxdepth 1 -name "$phase-*.png" | wc -l)" -eq "$count"
+            (cd "$phase-evidence" && sha256sum --check sha256.txt)
+          done
+      - name: Assert every owner gate remains untested and release NO_GO
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/u8_validate_evidence.py docs/evidence/U8_HU7_ACCEPTANCE.template.json > /tmp/u12-gates.json
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/u12-gates.json'))
+          assert d['claimed_observed']==0 and d['human_truth_verified'] is False
+          assert d['release']=='NO_GO'
+          assert list(d['statuses'].values())==['NOT_TESTED']*7+['NOT_GIVEN']
+          print('PASS U12 remains production NO_GO; no human tests claimed')
+          PY
+      - name: Retain original Chromium captures (not visual goldens or human witness)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: roomtone-u12-original-chromium-evidence
+          retention-days: 30
+          if-no-files-found: warn
+          path: |
+            u12-evidence/
+            u11-evidence/
+            u7-evidence/
+            u6-evidence/
+            u5-evidence/
+            u4-evidence/
+            u3-*.png
