@@ -115,3 +115,39 @@
   .rt-header .rt-navigation .rt-nav-button{font-size:10px}
   .rt-header .rt-navigation>.rt-mobile-mute{font-size:10px}
 }
+
+/* Screenshot remediation #3: large empty-LRC placeholder collided with the
+   absolute lyric cue / baseline inside fullscreen focus at 390 and 1440px.
+   Do not reduce the active synchronized lyric typography. */
+.stage.focus-mode .lyrics-screen{
+  min-height:clamp(290px,40dvh,470px);
+  padding-top:60px;
+  padding-bottom:65px;
+  gap:12px;
+}
+.stage.focus-mode .lyric-current.placeholder{
+  font-size:clamp(23px,3.15vw,46px);
+  line-height:1.22;
+  max-width:min(760px,88%);
+  text-wrap:balance;
+  overflow-wrap:break-word;
+  min-height:0;
+}
+.stage.focus-mode .rt-u5-cue{
+  bottom:18px;
+  right:4px;
+  font-size:10px;
+  max-width:90%;
+  text-align:right;
+}
+@media(max-width:680px){
+  .stage.focus-mode .lyrics-screen{
+    min-height:clamp(280px,40dvh,390px);
+    padding:52px 6px 62px;
+  }
+  .stage.focus-mode .lyric-current.placeholder{
+    font-size:clamp(22px,6.2vw,30px);
+    line-height:1.25;
+    max-width:95%;
+  }
+}

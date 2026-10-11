@@ -100,6 +100,12 @@ with sync_playwright() as p:
             ok(page.locator('.rt-u7-stage-dock').is_hidden(),'dock absent from fullscreen performance')
             ok(page.locator('#rtMobileMute').is_visible(),'panic remains visible in focus')
             ok(page.locator('#rtMobileMute').evaluate("(e)=>e.parentElement.id==='stage'"),'same safety button available above focus Stage')
+        ok(page.evaluate("""()=>{
+          const current=document.querySelector('#lyricCurrent').getBoundingClientRect();
+          const cue=document.querySelector('#rtU5LyricCue').getBoundingClientRect();
+          const screen=document.querySelector('#lyricView').getBoundingClientRect();
+          return current.bottom+6<=cue.top && current.top>=screen.top+22 && current.bottom<screen.bottom-20;
+        }"""),'empty LRC focus placeholder clears cue and lyric baseline')
         shot('focus')
         page.locator('#stageFocus').click()
         page.wait_for_timeout(50)

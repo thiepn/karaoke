@@ -26,6 +26,16 @@ emergency button covered Next. The second corrective commit puts it in the
 sticky navigation. Re-check the revised screenshots; do not claim real-device
 acceptance or shortcut reliability without owner observations.
 
+### Third independently reproduced screenshot defect
+In the corrected U7 original screenshots at 390px and 1440px, fullscreen
+performance with a synthetic local track but **no LRC** displayed the empty
+lyrics placeholder across the absolute cue text and stage divider. The next
+source-only patch adjusts only fullscreen **placeholder** typography and
+lyric-screen minimum height/padding. Active synchronized lyric sizing stays
+unchanged. A Playwright rectangle assertion checks the actual cue/placeholder
+clearance at 390, 768 and 1440px. This is browser-geometry evidence only;
+physical screen/reader approval is still NOT TESTED.
+
 ## Evidence classification
 - **Chromium synthetic acceptance**: checks DOM layout, original controls,
   keyboard Escape, focus, song loading and viewport overflow; does not establish
