@@ -31,6 +31,12 @@ with sync_playwright() as p:
    global checks
    assert value,f'{width}px: {message}'
    checks+=1
+  def shot(view):
+   # Full-page screenshots after editor focus may offset sticky/fixed elements.
+   # Reset the capture viewport without altering any app state or goldens.
+   page.evaluate("document.activeElement?.blur();window.scrollTo({top:0,behavior:'instant'})")
+   page.wait_for_timeout(45)
+   page.screenshot(path=str(OUT/f'u4-{view}-{width}.png'),full_page=True)
   ok(page.locator('#rtStagePanel').is_visible(),'stage default')
   ok(page.locator('#stagePanic').count()==1 and page.locator('#rtMobileMute').count()==1,'panic controls singleton')
   page.keyboard.press('Tab')
@@ -65,7 +71,7 @@ with sync_playwright() as p:
   page.locator('#rtU3OpenLyrics').click();page.wait_for_timeout(60)
   ok(page.locator('#songTitleEdit').evaluate('(e)=>e===document.activeElement'),'lyrics open and focus')
   ok(page.locator('#lyricEditor').is_visible(),'real LRC editor available')
-  page.screenshot(path=str(OUT/f'u4-songs-{width}.png'),full_page=True)
+  shot('songs')
   page.locator('[data-rt-view="stage"]').click()
   page.locator('#rtQueueMirror .rt-queue-choice').first.focus()
   page.keyboard.press('Enter');page.wait_for_timeout(90)
@@ -75,7 +81,7 @@ with sync_playwright() as p:
   ok(page.locator('#songPlayer').evaluate('(e)=>!e.paused'),'H2 play works')
   page.locator('#stagePlay').click()
   ok(page.locator('#songPlayer').evaluate('(e)=>e.paused'),'H2 pause works')
-  page.screenshot(path=str(OUT/f'u4-stage-{width}.png'),full_page=True)
+  shot('stage')
   page.locator('#jumpToStudio').focus();page.keyboard.press('Enter');page.wait_for_timeout(100)
   ok(page.locator('#rtSongsPanel').is_visible(),'stage jumps to lyrics')
   ok(page.locator('#rtU3LyricsTools').get_attribute('open') is not None,'editor disclosure opened')
@@ -112,13 +118,13 @@ with sync_playwright() as p:
   with page.expect_download() as d:page.locator('#takeDownload').click()
   ok(d.value.suggested_filename.startswith('roomtone-vocal-'),'original download name')
   ok(d.value.failure() is None,'mock local download completes')
-  page.screenshot(path=str(OUT/f'u4-studio-{width}.png'),full_page=True)
+  shot('studio')
   page.locator('[data-rt-view="setup"]').click()
   ok(page.locator('#inputSelect').is_visible() and page.locator('#outputSelect').is_visible(),'device selectors visible')
   ok(page.locator('#rtSetupContent .notice').is_visible(),'hardware warning present')
   page.locator('#rtU2GotoQa').click()
   ok(page.locator('#hardwareQa').get_attribute('open') is not None,'H1 checklist remains')
-  page.screenshot(path=str(OUT/f'u4-setup-{width}.png'),full_page=True)
+  shot('setup')
   ok(page.evaluate('document.documentElement.scrollWidth<=innerWidth+2'),'no horizontal overflow')
   ok(not errors,f'no page exceptions {errors}')
   ctx.close()
