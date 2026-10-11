@@ -1,0 +1,233 @@
+/* ROOMTONE U11 — After Hours console polish: presentation only.
+   Grounded in U7 original 390px Songs/Studio/Stage screenshots.
+   Does not replace, hide or rewire transport, safety mute, audio, data or dialogs.
+   Keep all tokens compatible with original high-contrast/dark visual direction. */
+:root {
+  --rt-u11-bg: #0b0d13;
+  --rt-u11-panel: #181a24;
+  --rt-u11-raised: #222535;
+  --rt-u11-stroke: #3c4051;
+  --rt-u11-primary: #bfaeff;
+  --rt-u11-text: #f3f0fc;
+  --rt-u11-muted: #b8b6c8;
+}
+body {
+  background: var(--rt-u11-bg);
+  color: var(--rt-u11-text);
+}
+.rt-header {
+  border-bottom: 1px solid #343646;
+}
+.rt-header .brand strong { font-size: clamp(17px, 1.6vw, 21px); letter-spacing: .16em }
+.rt-header .brand small { color: #b4afc8; }
+.rt-navigation { border-color: var(--rt-u11-stroke); background: #191b26; }
+.rt-navigation .rt-nav-button {
+  color: #c5c1d8;
+  font-weight: 750;
+  transition: background-color .16s ease, color .16s ease;
+}
+.rt-navigation .rt-nav-button.is-active {
+  color: #f8f5ff;
+  background: #39354d;
+  box-shadow: inset 0 -2px 0 var(--rt-u11-primary);
+}
+.rt-navigation .rt-nav-button:hover:not(.is-active) { background: #272939; color: #fff; }
+.rt-view-title h1 { text-wrap: balance; }
+.rt-stage-view .rt-view-title { border-color: #37394a; }
+.rt-stage-view .rt-view-title h1 { letter-spacing: -.045em; }
+.rt-stage-layout { gap: 14px; }
+.rt-stage-layout > .stage {
+  background: var(--rt-u11-panel);
+  border-color: #454253;
+  box-shadow: inset 0 2px 0 #b19be4;
+}
+.rt-u5-stage-meta {
+  border-bottom-color: #414052;
+  color: #c3b5e6;
+  letter-spacing: .14em;
+}
+#rtU5PlayState {
+  padding: 5px 8px;
+  border: 1px solid #504969;
+  background: #28253b;
+  color: #ddd2ff;
+  font-size: 10px;
+  line-height: 1.1;
+  flex: none;
+}
+.stage-title { color: #faf8ff; overflow-wrap: anywhere; }
+.stage-sub { color: var(--rt-u11-muted); }
+.stage .lyrics-screen {
+  border-top-color: #373647;
+  border-bottom-color: #4c4369;
+  background: #141722;
+}
+.stage .lyrics-screen::before { left: 12px; color: #a7a0c4; }
+.stage .lyrics-screen::after { background: #8271b1; }
+.stage .lyric-current:not(.placeholder) {
+  color: #fbf9ff;
+  text-wrap: balance;
+}
+.stage .lyric-current.placeholder { color: #c4b9e7; }
+.stage .rt-u5-cue { right: 12px; color: #c0aaf1; }
+.stage .stage-controls .btn {
+  border-color: #484a61;
+  background: #272a39;
+  color: #eeebf8;
+}
+.stage .stage-controls .stage-play {
+  border-color: #c8b9ff;
+  background: #bca8fa;
+  color: #161323;
+  box-shadow: 0 3px 0 #8271bf;
+  font-weight: 800;
+}
+.stage .stage-controls .stage-play:hover:not(:disabled) { background: #d5caff; }
+.stage .stage-controls .btn:not(.stage-play):hover:not(:disabled) { border-color: #a99bd2; }
+.stage .stage-timeline #stageSeek { accent-color: #bdadfc; }
+.stage .loop-bar { background: #1c1f2d; border-color: #3d4054; }
+.stage .performance-bar { background: #202330; border-color: #45465a; }
+.rt-side-panel {
+  border-color: #3d4051;
+  background: #191c27;
+}
+.rt-side-panel .rt-side-heading { border-color: #3c4050; }
+.rt-queue-mirror li.current {
+  border-left-color: #c1aefa;
+  background: #34304a;
+}
+.rt-side-panel :is(input[type=range],select):focus-visible,
+.rt-stage-view :is(button,input[type=range]):focus-visible,
+.rt-page-content :is(button,input,select,textarea,summary):focus-visible {
+  outline: 3px solid #e0d5ff!important;
+  outline-offset: 3px!important;
+}
+.rt-page-content > .rt-u2-console { border-color: #434556; background: #191c27!important; }
+.rt-u2-head { border-bottom-color: #3b3d4f; }
+.rt-u2-eyebrow,.rt-u3-kicker { color: #bdaefa; }
+.rt-u2-head p,.rt-u3-summary-copy small { color: #bdc0cc; }
+.rt-u2-search-wrap { border-color: #515368; background: #242737; }
+.rt-u2-search-wrap:focus-within {
+  outline: 3px solid #d6c7ff;
+  outline-offset: 2px;
+}
+.rt-u2-song-row.active {
+  background: #343048;
+  border-left-color: #c0adff;
+}
+.rt-u2-song-row .rt-u2-song-state { color: #dfd2ff; }
+.rt-u2-song-list { border-top-color: #414253; }
+.rt-u5-filter[aria-pressed="true"],
+#rtStudioContent .rt-u2-preset[aria-pressed="true"] {
+  background: #bdaafb;
+  border-color: #bdaafb;
+  color: #171325;
+}
+.rt-u3-disclosure { border-color: #404253; }
+.rt-u3-disclosure>.rt-u3-summary { background: #1d202c; }
+.rt-u3-disclosure>.rt-u3-summary:hover { background: #292b3b; }
+.rt-u3-disclosure[open]>.rt-u3-summary { border-bottom: 1px solid #494658; }
+#rtStudioContent .rt-u2-faders { gap: 20px; }
+#rtStudioContent .rt-u2-fader label { color: #f1edfc; }
+#rtStudioContent .rt-u2-fader output { color: #c5b3ff; }
+#rtStudioContent .rt-u2-fader input { accent-color: #bdaafb; }
+#rtSetupContent .rt-u2-step { background: #212331; border-color: #414457; }
+.stage.focus-mode {
+  background: #0c0e15;
+  box-shadow: inset 0 2px 0 #a890e6;
+}
+.stage.focus-mode .lyrics-screen { background: #131521; border-color: #3c3b50; }
+.stage.focus-mode .rt-u5-cue { right: max(12px,env(safe-area-inset-right,0px)); }
+
+/* Tablet: keep the original safe in-flow Stage dock and side-sheet behavior. */
+@media (max-width:850px) {
+  .rt-stage-layout>.stage { min-height: 560px; }
+  .rt-stage-view .rt-view-title { margin-bottom: 13px; }
+}
+
+/* Screenshot-grounded mobile rhythm corrections.
+   U7 390px Songs displayed four squeezed, multi-line buttons in one row.
+   Studio displayed four equal presets as 3 + 1. Both become even 2x2 grids. */
+@media (max-width:680px) {
+  .shell { padding-left: 14px; padding-right: 14px; }
+  .rt-header { padding-top: 13px; padding-bottom: 12px; }
+  .rt-header .brand strong { font-size: 17px; }
+  .rt-header .rt-navigation { gap: 4px; }
+  .rt-header .rt-navigation .rt-nav-button { min-height: 44px; }
+  .rt-header .rt-navigation>.rt-mobile-mute { min-height: 44px; }
+  .rt-stage-view .rt-view-title { margin-bottom: 9px; padding-bottom: 10px; }
+  .rt-stage-view .rt-view-title h1 { font-size: 19px; line-height: 1.2; }
+  .rt-stage-view .rt-u5-mobile-dock.rt-u7-stage-dock {
+    margin-bottom: 12px;
+    border-color: #514964;
+    background: #1b1d2a;
+  }
+  .rt-stage-view .rt-u7-stage-dock button {
+    min-height: 48px;
+    border-color: #5e5872;
+    background: #292b3d;
+    color: #f3efff;
+    font-weight: 750;
+  }
+  .rt-stage-layout>.stage { min-height: 0; padding: 18px 14px 16px; }
+  .rt-u5-stage-meta { margin-bottom: 14px; padding-bottom: 11px; gap: 6px; }
+  .stage-title { font-size: clamp(25px, 6.8vw, 36px); }
+  .stage .lyrics-screen {
+    min-height: clamp(244px, 34dvh, 435px);
+    margin: 15px 0 10px;
+    padding: 50px 12px 48px;
+    gap: 14px;
+  }
+  .stage .lyrics-screen::before { left: 12px; }
+  .stage .rt-u5-cue { right: 12px; }
+  .stage .stage-controls { gap: 7px; }
+  .stage .stage-controls .btn { min-height: 48px; }
+  .stage .stage-controls .stage-play { box-shadow: 0 2px 0 #8271bf; }
+  .stage .loop-bar { padding: 10px 8px; }
+  .rt-page-content > .rt-u2-console { padding: 18px; }
+  #rtSongsContent .rt-u2-toolbar {
+    display: grid;
+    grid-template-columns: repeat(2,minmax(0,1fr));
+    align-items: stretch;
+    gap: 9px;
+  }
+  #rtSongsContent .rt-u2-search-wrap {
+    grid-column: 1 / -1;
+    min-width: 0;
+    min-height: 48px;
+  }
+  #rtSongsContent .rt-u2-toolbar>.rt-u2-action {
+    min-width: 0;
+    min-height: 49px;
+    width: 100%;
+    padding: 10px 8px;
+    white-space: normal;
+    line-height: 1.25;
+    text-wrap: balance;
+  }
+  #rtStudioContent .rt-u2-presets {
+    display: grid;
+    grid-template-columns: repeat(2,minmax(0,1fr));
+    gap: 8px;
+  }
+  #rtStudioContent .rt-u2-presets>.rt-u2-preset {
+    width: 100%;
+    min-width: 0;
+    min-height: 48px;
+    padding: 10px 6px;
+  }
+  #rtStudioContent .rt-u2-faders { gap: 18px; }
+  #rtStudioContent .rt-u2-fader input { min-height: 28px; }
+  .rt-u3-disclosure>.rt-u3-summary { min-height: 70px; }
+  .rt-u2-song-row.active { border-left-width: 3px; }
+}
+/* Existing focus-mode placeholder fix remains authoritative; no reflow of
+   the cue or the original fullscreen emergency mute. */
+@media (max-width:350px) {
+  #rtSongsContent .rt-u2-toolbar { gap: 7px; }
+  #rtSongsContent .rt-u2-toolbar>.rt-u2-action { font-size: 11px; padding: 10px 5px; }
+  .rt-header .brand strong { font-size: 16px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .rt-navigation .rt-nav-button { transition: none; }
+}
