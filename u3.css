@@ -1,0 +1,81 @@
+/* ROOMTONE U3 — responsive task-focused workspaces, WCAG-minded focus, reduced motion. */
+.rt-page-content{gap:20px}
+.rt-u3-disclosure{display:block;border:1px solid #323640;background:#191c24;border-radius:5px;min-width:0;scroll-margin-top:136px}
+.rt-u3-disclosure>.rt-u3-summary{list-style:none;cursor:pointer;display:flex;gap:16px;align-items:center;justify-content:space-between;padding:19px clamp(17px,2vw,26px);min-height:71px;color:#f3f0e9}
+.rt-u3-summary::-webkit-details-marker{display:none}
+.rt-u3-summary-copy{display:grid;gap:5px;min-width:0}
+.rt-u3-summary-copy strong{font-size:15px;font-weight:720;letter-spacing:-.01em}
+.rt-u3-summary-copy small{font-size:12px;font-weight:400;color:#adb1bf;line-height:1.5}
+.rt-u3-summary:hover{background:#21242c}
+.rt-u3-summary:focus-visible{outline:3px solid #b8a6ff;outline-offset:3px}
+.rt-u3-chevron{font:25px/1 monospace;color:#afa1f4;flex:none;transform-origin:center}
+.rt-u3-disclosure[open] .rt-u3-chevron{transform:rotate(45deg)}
+.rt-u3-disclosure-body{padding:0 clamp(12px,2vw,23px) 22px;border-top:1px solid #30343d;min-width:0}
+.rt-u3-disclosure-body>.card{border:0!important;background:transparent!important;padding:18px 0 0!important}
+.rt-u3-disclosure-body>section.card,.rt-u3-disclosure-body>div.card{width:100%}
+.rt-u3-disclosure-body>.intro{padding:17px 0 0}
+.rt-u3-disclosure-body>.intro h1{font-size:22px}
+#rtU3TrackTools .queue-list{max-height:170px}
+#rtU3LyricsTools .studio-grid{gap:22px}
+#rtU3LyricsTools .studio-pane{min-width:0}
+#rtU3LyricsTools .studio-toolbar{position:sticky;top:120px;background:#252936;border:1px solid #464854;z-index:4;padding:11px;flex-wrap:wrap}
+#rtU3LyricsTools #lyricEditor{scroll-margin-top:210px}
+#rtU3LyricsTools .studio-input,#rtU3LyricsTools textarea{max-width:100%}
+.rt-u3-record{background:#171b22;border:1px solid #393e49;padding:clamp(17px,2.4vw,28px);min-width:0}
+.rt-u3-record-intro{display:flex;align-items:flex-start;justify-content:space-between;gap:15px;margin-bottom:17px}
+.rt-u3-kicker{font-size:10px;letter-spacing:.19em;color:#b7a9fc;font-weight:750}
+.rt-u3-record-intro h2{font-size:clamp(22px,2vw,30px);letter-spacing:-.04em;margin:5px 0 7px}
+.rt-u3-record-intro p{font-size:12px;line-height:1.6;color:#aaafbf;max-width:520px}
+.rt-u3-record-safe{white-space:nowrap;border:1px solid #485248;color:#b5d7bf;font-size:10px;padding:7px 9px;font-weight:700;letter-spacing:.05em}
+.rt-u3-record .record-box{border:0!important;background:#1e222b;padding:20px!important}
+.rt-u3-record-buttons{display:flex;flex-wrap:wrap;gap:9px}
+.rt-u3-record-buttons>.btn{flex:1;min-width:150px;min-height:46px}
+.rt-u3-record-buttons #recordBtn:not(:disabled){background:#513038;color:#ffd3d3;border-color:#9e6268}
+.rt-u3-record-buttons #recordStopBtn:not(:disabled){background:#a99bf7;color:#17131f;border-color:#a99bf7}
+.rt-u3-record .take-panel:not(.hidden){display:grid;gap:13px;padding:20px;background:#222c29;border:1px solid #667669;margin-top:15px}
+.rt-u3-take-head strong{font-size:18px;color:#f0f4ee}
+.rt-u3-take-head p{font-size:12px;color:#b9cbc0;margin-top:4px}
+.rt-u3-record .take-panel audio{display:block;width:100%;max-width:100%}
+.rt-u3-record .take-panel .download{display:inline-flex;justify-content:center;width:fit-content;max-width:100%;white-space:normal}
+.rt-u3-record-state{font-size:12px;color:#c7c6d4;border-top:1px solid #38404a;padding-top:14px;margin-top:18px;line-height:1.6}
+#rtSetupContent .notice{margin:0;background:#2e2422;border:1px solid #795d48;padding:14px 18px}
+#rtSetupContent .readiness{margin:0}
+#rtSetupContent .readiness-help{font-size:12px}
+#rtSetupContent .grid{margin:0}
+#rtSetupContent .grid .card{min-width:0}
+#rtSetupContent #hardwareQa{margin:0}
+.rt-navigation .rt-nav-button:focus-visible,
+.rt-u2-action:focus-visible,
+.rt-u2-preset:focus-visible,
+.rt-u2-song-select:focus-visible,
+.rt-quiet-action:focus-visible,
+.rt-page-content :is(button,input,select,textarea,a):focus-visible{outline:3px solid #bdaaff!important;outline-offset:3px!important}
+#rtU3LyricsTools:focus-visible,#rtU3Effects:focus-visible{outline:3px solid #bdaaff;outline-offset:3px}
+#rtSongsContent,#rtStudioContent,#rtSetupContent{min-width:0}
+@media(max-width:850px){
+  .rt-u3-disclosure>.rt-u3-summary{padding:18px}
+  .rt-u3-record-intro{flex-wrap:wrap}
+  #rtU3LyricsTools .studio-grid{grid-template-columns:1fr}
+  #rtU3LyricsTools .studio-toolbar{top:95px}
+}
+@media(max-width:600px){
+  .rt-page-content{gap:13px}
+  .rt-u3-disclosure>.rt-u3-summary{padding:15px 13px;min-height:68px}
+  .rt-u3-summary-copy strong{font-size:13px}
+  .rt-u3-summary-copy small{font-size:11px}
+  .rt-u3-disclosure-body{padding:0 12px 14px}
+  .rt-u3-record{padding:14px}
+  .rt-u3-record .record-box{padding:13px!important}
+  .rt-u3-record-buttons>.btn{flex:1 1 100%;min-width:0}
+  #rtU3LyricsTools .studio-toolbar{position:static}
+  #rtU3LyricsTools .studio-title{gap:8px;flex-wrap:wrap}
+  .rt-u3-record-safe{font-size:9px}
+  #rtSetupContent .notice{padding:13px;line-height:1.55}
+  #rtSongsContent .rt-u2-toolbar .rt-u2-action{min-width:0;white-space:normal}
+}
+@media(prefers-reduced-motion:reduce){
+  html:focus-within{scroll-behavior:auto!important}
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+  .rt-u3-chevron{transform:none!important}
+  .rt-u3-disclosure[open] .rt-u3-chevron{font-size:19px}
+}

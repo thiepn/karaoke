@@ -1,0 +1,41 @@
+name: ROOMTONE U3 Browser Qualification
+on:
+  push:
+    branches: ["feat/u3-after-hours-polish"]
+  pull_request:
+    branches: ["feat/u2-after-hours-workspaces"]
+permissions:
+  contents: read
+concurrency:
+  group: roomtone-u3-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  chromium:
+    name: Offline Chromium workspace, accessibility and playback
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install isolated Chromium test runner
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Validate U3 scripts
+        run: |
+          node --check u3.js
+          python -m py_compile tests/u3_smoke.py
+      - name: Run original U2 browser regression
+        run: python tests/u2_smoke.py
+      - name: Run U3 across desktop, tablet and mobile
+        run: python tests/u3_smoke.py
+      - name: Keep original U3 browser screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: roomtone-u3-original-chromium-screenshots
+          path: u3-*.png
+          if-no-files-found: warn
+          retention-days: 14
