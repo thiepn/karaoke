@@ -2,6 +2,16 @@
    Additive presentation only. Existing audio, recording, storage, handlers,
    U7 Queue/Mixer & emergency Mute remain unchanged. */
 
+/* Critical Chromium reproduction: .rt-view uses an entrance animation with
+   fill-mode:both, retaining transform:translateY(0). Even a zero transform
+   creates a containing block for fixed descendants, so fullscreen Stage
+   was offset 43px and -11px at 1440px. Disable ONLY that animation while
+   the existing Stage is in focus; no other workspace motion changes. */
+body.in-focus #rtStagePanel.rt-view {
+  animation: none !important;
+  transform: none !important;
+}
+
 /* Evidence: U11 desktop focus screenshot exposed underlying mix/sidebar/footer.
    The original later inline style lowered fixed fullscreen Stage to z-index:100.
    Keep focus above ALL existing stage overlays, but within its own scrollport. */
