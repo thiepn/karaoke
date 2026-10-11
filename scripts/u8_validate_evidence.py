@@ -25,7 +25,8 @@ ROOT_KEYS = {
     "release_gate", "evidence_kind", "tests",
 }
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
-PRIVATE_REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:/-]{3,119}$")
+# Opaque owner-managed local ID only. No scheme:// URLs, filesystem paths or network hosts.
+PRIVATE_REF = re.compile(r"^owner-local:[A-Za-z0-9][A-Za-z0-9_.-]{2,80}$")
 
 
 def validate(payload: object) -> dict:
