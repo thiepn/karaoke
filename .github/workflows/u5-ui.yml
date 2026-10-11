@@ -1,0 +1,77 @@
+name: ROOMTONE U5 AFTER HOURS Visual Qualification
+on:
+  push:
+    branches:
+      - feat/u5-after-hours-experience
+  pull_request:
+    branches:
+      - feat/u4-after-hours-release-candidate
+permissions:
+  contents: read
+jobs:
+  visual:
+    name: Exact-head Chromium visual and behavior checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact event head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify ancestry and presentation-only scope
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+          parent='56399f8c47030eb8540fffd0dbf71b5f62635872'
+          head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          assert subprocess.run(['git','merge-base','--is-ancestor',parent,head]).returncode==0
+          files=set(subprocess.check_output(['git','diff','--name-only',parent,head],text=True).splitlines())
+          allow={'index.html','u5.css','u5.js','tests/u5_smoke.py',
+                 '.github/workflows/u5-ui.yml','docs/U5_VISUAL_ACCEPTANCE.md'}
+          assert files<=allow and all(n in files for n in ('index.html','u5.css','u5.js')),files
+          html=Path('index.html').read_text()
+          for n in ('u2','u3','u4','u5'):
+              assert html.count(f'href="{n}.css"')==1
+              assert html.count(f'src="{n}.js"')==1
+          base=subprocess.check_output(['git','show',f'{parent}:index.html'],text=True)
+          assert html.replace('  <link rel="stylesheet" href="u5.css">\n','').replace('<script defer src="u5.js"></script>\n','')==base
+          print('PASS exact-head U4 ancestry and immutable original audio/HTML baseline',flush=True)
+          PY
+      - name: Install Python and Chromium
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Playwright Chromium
+        run: |
+          python -m pip install --disable-pip-version-check playwright==1.55.0
+          python -m playwright install --with-deps chromium
+      - name: Inherited U3 browser checks
+        run: python tests/u3_smoke.py
+      - name: Inherited U4 keyboard and recording UI checks
+        run: python tests/u4_smoke.py
+      - name: U5 visual and interactive acceptance
+        run: python tests/u5_smoke.py
+      - name: Verify screenshot hashes
+        run: |
+          test "$(find u5-evidence -maxdepth 1 -name 'u5-*.png' | wc -l)" -eq 15
+          cd u5-evidence
+          sha256sum --check sha256.txt
+      - name: Retain original visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: roomtone-u5-original-visual-evidence
+          path: |
+            u5-evidence/
+            u4-evidence/
+            u3-*.png
+          if-no-files-found: warn
+          retention-days: 30
