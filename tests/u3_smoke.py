@@ -49,6 +49,9 @@ with sync_playwright() as playwright:
   page.locator('#rtSongSearch').fill('unknown');ok(page.locator('.rt-u2-empty').is_visible(),'empty filter feedback')
   page.locator('#rtSongSearch').fill('track');ok(page.locator('#rtU2SongList .rt-u2-song-row').count()==1,'filter restores song')
   page.locator('#rtU3OpenLyrics').click()
+  # U3 schedules focus via requestAnimationFrame; wait for the actual result,
+  # rather than racing the next statement on a busy Chromium runner.
+  page.wait_for_function("document.activeElement === document.getElementById('songTitleEdit')",timeout=2000)
   ok(page.locator('#rtU3LyricsTools').get_attribute('open') is not None,'lyrics tools open via dedicated button')
   ok(page.locator('#songTitleEdit').is_visible(),'song title editing visible')
   ok(page.locator('#songTitleEdit').evaluate('(e)=>document.activeElement===e'),'edit lyrics moves focus to title')

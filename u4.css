@@ -1,0 +1,8 @@
+/* ROOMTONE U4 — targeted keyboard/reduced-motion fixes, not a visual reskin. */
+.rt-u4-skip{position:fixed;top:8px;left:12px;z-index:4000;background:#ede9fc;color:#11121a;border:2px solid #8067cf;padding:10px 15px;transform:translateY(-160%);font-weight:750;text-decoration:none}
+.rt-u4-skip:focus{transform:none;outline:3px solid #ede9fc;outline-offset:3px}
+.rt-u4-visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+.rt-u2-song-select:focus-visible,.rt-queue-choice:focus-visible,.queue-play:focus-visible,.queue-move:focus-visible,.queue-remove:focus-visible,#takeDownload:focus-visible,.rt-u4-skip:focus-visible{outline:3px solid #d1c5ff!important;outline-offset:3px!important}
+#rtU3LyricsTools:focus-within,#rtU3TrackTools:focus-within{border-color:#6b638c}
+#rtU3RecordState{min-height:1.5em}
+@media (prefers-reduced-motion:reduce){.rt-u4-skip{transition:none!important}.rt-u2-song-select,.rt-queue-choice{transition:none!important}}

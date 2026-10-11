@@ -1,0 +1,68 @@
+name: ROOMTONE U4 Release Candidate Chromium
+
+on:
+  push:
+    branches:
+      - feat/u4-after-hours-release-candidate
+  pull_request:
+    branches:
+      - feat/u3-after-hours-polish
+
+permissions:
+  contents: read
+
+jobs:
+  chromium:
+    name: Offline Chromium release-candidate regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - name: Checkout the exact event head, not a synthetic PR merge commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify qualified source and exact event head
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git rev-parse HEAD
+          python - <<'PY'
+          from pathlib import Path
+          html=Path('index.html').read_text()
+          for name in ('u2','u3','u4'):
+              assert html.count(f'href="{name}.css"')==1
+              assert html.count(f'src="{name}.js"')==1
+          for f in ('u4.js','u4.css','tests/u4_smoke.py'):
+              assert Path(f).is_file(),f
+          print('PASS exact-head source structure')
+          PY
+      - name: Install Python and Chromium
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Playwright
+        run: |
+          python -m pip install --disable-pip-version-check playwright==1.55.0
+          python -m playwright install --with-deps chromium
+      - name: Run inherited U3 smoke on the U4 head
+        run: python tests/u3_smoke.py
+      - name: Run U4 keyboard, editing, recording-review and safety smoke
+        run: python tests/u4_smoke.py
+      - name: Check original U4 screenshot evidence hashes
+        run: |
+          test "$(find u4-evidence -maxdepth 1 -name 'u4-*.png' | wc -l)" -eq 12
+          cd u4-evidence
+          sha256sum --check sha256.txt
+      - name: Retain U4 and inherited U3 screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: roomtone-u4-original-chromium-evidence
+          path: |
+            u4-evidence/
+            u3-*.png
+          if-no-files-found: warn
+          retention-days: 30
