@@ -123,6 +123,22 @@ with sync_playwright() as pw:
         filters.nth(0).click()
         verify(page.locator("#rtU2SongList .rt-u2-song-row").first.is_visible(),
                "re-select all restores clickable original row",width)
+        # Actual keyboard navigation through the original search and toolbar.
+        page.locator("#rtSongSearch").focus()
+        page.keyboard.type("Visual Fixture")
+        page.wait_for_timeout(40)
+        verify(page.locator("#rtU2SongList .rt-u2-song-row:visible").count()==1,
+               "typed search returns actual matching local row",width)
+        page.keyboard.press("Tab")
+        verify(page.evaluate("document.activeElement?.id==='rtU2AddTracks'"),
+               "Tab from search reaches original Add files action",width)
+        page.locator("#rtSongSearch").fill("not-a-matching-track")
+        page.wait_for_timeout(40)
+        verify(page.locator("#rtU2SongList .rt-u2-song-row:visible").count()==0,
+               "unmatched search hides stale song rows",width)
+        verify(page.locator("#rtU2SongList .rt-u2-empty").is_visible(),
+               "original no-match message appears",width)
+        page.locator("#rtSongSearch").fill("")
         verify(page.evaluate("document.documentElement.scrollWidth<=innerWidth+2"),
                "no library horizontal overflow",width)
         page.evaluate("window.scrollTo({top:0,behavior:'instant'})")
@@ -170,9 +186,17 @@ with sync_playwright() as pw:
         # below the viewport and cannot prove a visual fullscreen leak.
         screenshot("focus-viewport",False)
 
-        page.locator("#stageFocus").click()
+        # Exercise original keyboard semantics: Enter exits/reopens; Escape closes.
+        page.locator("#stageFocus").focus()
+        page.keyboard.press("Enter")
         verify(not page.locator("#stage").evaluate(
-            "(e)=>e.classList.contains('focus-mode')"),"original focus exit works",width)
+            "(e)=>e.classList.contains('focus-mode')"),"Enter exits focus",width)
+        page.keyboard.press("Enter")
+        verify(page.locator("#stage").evaluate(
+            "(e)=>e.classList.contains('focus-mode')"),"Enter re-enters focus",width)
+        page.keyboard.press("Escape")
+        verify(not page.locator("#stage").evaluate(
+            "(e)=>e.classList.contains('focus-mode')"),"Escape closes focus",width)
         verify(page.evaluate("getComputedStyle(document.documentElement).overflow!=='hidden'"),
                "root scroll restored after leaving focus",width)
         if width<=680:
