@@ -1,0 +1,131 @@
+name: ROOMTONE U19 Cross-View Modal & Accessibility (NO_GO)
+on:
+  push:
+    branches:
+      - feat/u19-cross-view-focus-recovery
+  pull_request:
+    branches:
+      - feat/u18-modal-route-focus-reproduction
+permissions:
+  contents: read
+jobs:
+  chromium:
+    name: U19 actual source-bound browser and original screenshot qualification
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout actual triggering source SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact qualified U18 parent and only scoped U19 changes
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+          parent='fe43b5535aec962e2347a6994c6bf4e08b0af00c'
+          assert subprocess.run(['git','merge-base','--is-ancestor',parent,'HEAD'],check=False).returncode==0
+          changed=set(subprocess.check_output(['git','diff','--name-only',parent,'HEAD'],text=True).splitlines())
+          permitted={'.github/workflows/u19-ui.yml','tests/u19_smoke.py',
+                     'docs/U19_CROSS_VIEW_EVIDENCE.md','index.html','u19.js'}
+          assert {'.github/workflows/u19-ui.yml','tests/u19_smoke.py'}<=changed<=permitted,changed
+          for file in ['u18.js','u14.js','u7.js','u6.js','u5.js','u4.js','u3.js','u2.js',
+                       'scripts/u8_validate_evidence.py','scripts/u16_validate_private_witness.py',
+                       'docs/evidence/U8_HU7_ACCEPTANCE.template.json',
+                       'docs/evidence/U16_HU7_LOCAL_INTAKE.template.json']:
+              assert Path(file).read_bytes()==subprocess.check_output(['git','show',f'{parent}:{file}'])
+          for n in ('u2','u3','u4','u5','u6','u7','u11','u12','u13'):
+              file=n+'.css'
+              assert Path(file).read_bytes()==subprocess.check_output(['git','show',f'{parent}:{file}'])
+          html=Path('index.html').read_text()
+          old=subprocess.check_output(['git','show',f'{parent}:index.html'],text=True)
+          if html!=old:
+              assert html.replace('  <script defer src="u19.js"></script>\n','')==old
+              assert html.count('src="u19.js"')==1
+          assert html.count('src="u18.js"')==1 and html.count('src="u14.js"')==1
+          print('PASS U18 exact parent, untouched player/audio/data/owner gates, only additive U19 layer')
+          PY
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned Chromium runner
+        run: |
+          python -m pip install --disable-pip-version-check playwright==1.55.0
+          python -m playwright install --with-deps chromium
+      - name: U19 genuine Chromium cross-view diagnostic and keyboard/AX regression
+        run: python tests/u19_smoke.py
+      - name: Inherited U3 through U18 browser suites
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tests/u3_smoke.py
+          python tests/u4_smoke.py
+          python tests/u5_smoke.py
+          python tests/u6_smoke.py
+          python tests/u7_smoke.py
+          python tests/u11_smoke.py
+          python tests/u12_smoke.py
+          python tests/u13_smoke.py
+          python tests/u14_smoke.py
+          python tests/u15_reconciliation_smoke.py
+          python tests/u18_smoke.py
+      - name: Independent original screenshot manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for phase in u4 u5 u6 u7 u11 u12 u13 u14 u15 u18 u19; do
+            case "$phase" in
+              u4) count=12 ;;
+              u5) count=15 ;;
+              u6|u7|u12|u14|u19) count=16 ;;
+              u11) count=14 ;;
+              u13) count=12 ;;
+              u15|u18) count=8 ;;
+            esac
+            test "$(find "$phase-evidence" -maxdepth 1 -name "$phase-*.png" | wc -l)" -eq "$count"
+            (cd "$phase-evidence" && sha256sum -c sha256.txt)
+          done
+      - name: Verify original private owner templates remain unclaimed and NO_GO
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/u8_validate_evidence.py docs/evidence/U8_HU7_ACCEPTANCE.template.json > /tmp/u19-u8.json
+          python scripts/u16_validate_private_witness.py docs/evidence/U16_HU7_LOCAL_INTAKE.template.json > /tmp/u19-u16.json
+          python - <<'PY'
+          import json
+          a=json.load(open('/tmp/u19-u8.json'))
+          b=json.load(open('/tmp/u19-u16.json'))
+          assert a['claimed_observed']==0 and a['release']=='NO_GO' and not a['human_truth_verified']
+          assert list(a['statuses'].values())==['NOT_TESTED']*7+['NOT_GIVEN']
+          assert b['reported_test_ids_unverified']==[] and b['release']=='NO_GO'
+          assert not b['human_truth_verified'] and not b['owner_approval_verified']
+          print('PASS HU7-01..07 NOT_TESTED; HU7-08 NOT_GIVEN; release NO_GO')
+          PY
+      - name: Upload original synthetic PNG evidence (diagnostic failures retained)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: roomtone-u19-original-chromium-evidence
+          retention-days: 30
+          if-no-files-found: warn
+          path: |
+            u19-evidence/
+            u18-evidence/
+            u15-evidence/
+            u14-evidence/
+            u13-evidence/
+            u12-evidence/
+            u11-evidence/
+            u7-evidence/
+            u6-evidence/
+            u5-evidence/
+            u4-evidence/
+            u3-*.png
