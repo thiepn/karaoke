@@ -1,7 +1,7 @@
 /* ROOMTONE U7 — screenshot-grounded positioning fix; audio controls untouched.
  * The bottom Queue/Mixer bar visibly crossed Stage transport on mobile.
- * Reparent the EXISTING dock into normal Stage flow. The independent original
- * emergency mute stays accessible in every workspace and is never reparented.
+ * Reparent the EXISTING dock into normal Stage flow. The same original
+ * emergency mute is repositioned without replacing its click listener.
  */
 (()=>{
   'use strict';
@@ -9,8 +9,10 @@
   const dock=view?.querySelector('.rt-u5-mobile-dock');
   const heading=view?.querySelector('.rt-view-title');
   const header=document.querySelector('.rt-header');
+  const navigation=header?.querySelector('.rt-navigation');
+  const stage=document.getElementById('stage');
   const panic=document.getElementById('rtMobileMute');
-  if(!view||!dock||!heading||!header||!panic)return;
+  if(!view||!dock||!heading||!header||!navigation||!stage||!panic)return;
 
   // Retain the U5 real queue/mixer buttons and their event listeners.
   heading.insertAdjacentElement('afterend',dock);
@@ -28,6 +30,21 @@
   }else{
     window.addEventListener('resize',updateTop,{passive:true});
   }
-  // Keep the actual safety button globally reachable, including Songs and Setup.
+  // Screenshot defect: fixed mute obscured Next at 390px. Move the same button
+  // into the sticky navigation. DOM reparenting preserves its original listeners.
+  panic.textContent='Mute';
+  panic.title='Emergency mute live microphone monitoring (Escape)';
+  panic.setAttribute('aria-keyshortcuts','Escape');
   panic.setAttribute('data-rt-u7-safety','preserved');
+  const syncPanicPlacement=()=>{
+    const focusing=stage.classList.contains('focus-mode');
+    const target=focusing?stage:navigation;
+    if(panic.parentElement!==target){
+      if(focusing)stage.prepend(panic);
+      else navigation.append(panic);
+    }
+    panic.dataset.rtU7Placement=focusing?'focus':'navigation';
+  };
+  new MutationObserver(syncPanicPlacement).observe(stage,{attributes:true,attributeFilter:['class']});
+  syncPanicPlacement();
 })();

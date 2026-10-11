@@ -53,6 +53,9 @@ with sync_playwright() as p:
         ok(page.locator('.rt-u7-stage-dock').get_attribute('data-rt-u7-layout')=='in-flow','UI correction marker')
         ok(page.locator('.rt-u7-stage-dock').evaluate('(e)=>e.previousElementSibling.classList.contains("rt-view-title")'),'dock placed after heading before stage')
         if width==390:
+            ok(page.locator('#rtMobileMute').evaluate("(e)=>e.parentElement.classList.contains('rt-navigation')"),'same mute moved into sticky workspace navigation')
+            ok(page.locator('#rtMobileMute').evaluate("(e)=>getComputedStyle(e).position==='static'"),'navigation mute is not floating over Stage')
+            ok(page.locator('#rtMobileMute').get_attribute('aria-keyshortcuts')=='Escape','original shortcut remains advertised')
             ok(page.locator('.rt-u7-stage-dock').is_visible(),'mobile stage dock visible')
             ok(page.locator('.rt-u7-stage-dock').evaluate('(e)=>getComputedStyle(e).position==="sticky"'),'dock is sticky, not fixed')
             ok(page.evaluate("""()=>{
@@ -68,6 +71,13 @@ with sync_playwright() as p:
         page.wait_for_timeout(160)
         ok(page.locator('#trackQueue .queue-item').count()==1,'local track is in original queue')
         ok(page.locator('#stagePlay').is_enabled(),'original player ready')
+        if width==390:
+            ok(page.evaluate("""()=>{const a=document.querySelector('#rtMobileMute').getBoundingClientRect();
+              const b=document.querySelector('#stagePlay').getBoundingClientRect();
+              const c=document.querySelector('#stageNext').getBoundingClientRect();
+              const intersects=(x,y)=>x.left<y.right&&x.right>y.left&&x.top<y.bottom&&x.bottom>y.top;
+              return !intersects(a,b)&&!intersects(a,c);
+            }"""),'global mute does not overlap transport or Next control')
         shot('stage')
         if width==390:
             page.locator('.rt-u7-stage-dock button').first.click()
@@ -84,12 +94,17 @@ with sync_playwright() as p:
             ok(page.locator('#musicVolume').input_value()=='36','backing volume delegates to original input')
             page.locator('.rt-side-mix .rt-u5-sheet-close').click()
         page.locator('#stageFocus').click()
+        page.wait_for_timeout(50)
         ok(page.locator('#stage').evaluate('(e)=>e.classList.contains("focus-mode")'),'native focus mode still works')
         if width==390:
             ok(page.locator('.rt-u7-stage-dock').is_hidden(),'dock absent from fullscreen performance')
             ok(page.locator('#rtMobileMute').is_visible(),'panic remains visible in focus')
+            ok(page.locator('#rtMobileMute').evaluate("(e)=>e.parentElement.id==='stage'"),'same safety button available above focus Stage')
         shot('focus')
         page.locator('#stageFocus').click()
+        page.wait_for_timeout(50)
+        if width==390:
+            ok(page.locator('#rtMobileMute').evaluate("(e)=>e.parentElement.classList.contains('rt-navigation')"),'emergency mute returns to global sticky navigation')
         page.locator('[data-rt-view="songs"]').click()
         ok(page.locator('#rtSongsContent').is_visible(),'songs accessible')
         ok(page.locator('#rtU6FilterEmpty').count()==1,'prior U6 filter fix preserved')

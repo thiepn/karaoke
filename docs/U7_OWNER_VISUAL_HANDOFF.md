@@ -15,14 +15,16 @@ rendered-browser visual defect; it is NOT evidence about real phones.
 
 U7 reuses exactly the existing Queue and Mixer buttons and moves their dock
 immediately after the Stage section heading in normal document flow, sticky
-below the actual measured header height at narrow widths. The independent
-original emergency mute remains fixed and available globally on Stage, Songs,
-Studio, Setup and focus mode. Its handler and the original inline emergency
-mute remain unchanged. U7 does not change microphone permissions, audio DSP,
+below the actual measured header height at narrow widths. The same original emergency mute moves into the sticky navigation so that it
+does not cover the Next button. During fullscreen focus mode it repositions
+inside the fullscreen Stage. Its existing click handler, Escape shortcut and
+the original inline emergency mute remain unchanged. U7 does not change microphone permissions, audio DSP,
 playback/recording, safety shortcuts, user data, LRC, or saved storage.
 
-Original PNG screenshots may reveal a further physical-device defect. Do not
-assume U7 has fully solved fixed emergency-mute overlap until genuinely tested.
+The first U7 Chromium screenshot demonstrated a second obstruction: the fixed
+emergency button covered Next. The second corrective commit puts it in the
+sticky navigation. Re-check the revised screenshots; do not claim real-device
+acceptance or shortcut reliability without owner observations.
 
 ## Evidence classification
 - **Chromium synthetic acceptance**: checks DOM layout, original controls,
@@ -41,7 +43,7 @@ sensitive files or live microphone input.
 
 | ID | Real test | Result |
 | --- | --- | --- |
-| HU7-01 | Android Chrome: Stage at actual mobile width, inspect Queue/Mixer row above lyrics and fixed Mute visibility/occlusion while scrolling | NOT TESTED |
+| HU7-01 | Android Chrome: Stage at actual mobile width, inspect Queue/Mixer row above lyrics and red navigation Mute visibility while scrolling | NOT TESTED |
 | HU7-02 | Android Chrome: open Queue then Mixer, close, return focus, ensure original controls work | NOT TESTED |
 | HU7-03 | Android Chrome: Songs filters/search with synthetic local song and matching LRC (no microphone) | NOT TESTED |
 | HU7-04 | Samsung Internet: repeat Stage, Queue, Mixer, safety visibility | NOT TESTED |
@@ -69,8 +71,8 @@ a local secure context for UI, but remains NOT a deployed-origin acceptance.
 Open the exact U7 local build in Android Chrome, with Stage active. Confirm
 the Queue and Mixer buttons appear in their own row **above** the Stage, not
 over the transport/progress or lyric text. Slowly scroll between lyrics,
-playback/practice and bottom of the page. Check that the red Mute voice button
-is visible and not covering a required button at the point you try to use it.
+playback/practice and bottom of the page. Check that the red Mute button in the navigation is visible and does not
+cover Next, playback or practice controls; inspect focus mode too.
 Do not enable the microphone. Record:
 - Android device model, Chrome version (if known) and portrait orientation;
 - PASS or FAIL and the observed behavior in one sentence;
