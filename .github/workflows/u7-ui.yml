@@ -1,0 +1,90 @@
+name: ROOMTONE U7 Screenshot Remediation & Owner Handoff
+on:
+  push:
+    branches:
+      - feat/u7-owner-visual-handoff
+  pull_request:
+    branches:
+      - feat/u6-after-hours-visual-acceptance
+permissions:
+  contents: read
+jobs:
+  visual:
+    name: Exact-head U3-U7 visual qualification
+    runs-on: ubuntu-latest
+    timeout-minutes: 26
+    steps:
+      - name: Checkout exact source head (not synthetic PR merge)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact U6 ancestry and six-file source-only diff
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+          parent='d29d4ce16d22710a2274fc93af9ab19b3e6b98b1'
+          assert subprocess.run(['git','merge-base','--is-ancestor',parent,'HEAD']).returncode==0
+          changes=set(subprocess.check_output(['git','diff','--name-only',parent,'HEAD'],text=True).splitlines())
+          allowed={'index.html','u7.js','u7.css','tests/u7_smoke.py',
+                   '.github/workflows/u7-ui.yml','docs/U7_OWNER_VISUAL_HANDOFF.md'}
+          assert changes<=allowed and {'index.html','u7.js','u7.css','tests/u7_smoke.py'}<=changes,changes
+          original=subprocess.check_output(['git','show',parent+':index.html'],text=True)
+          current=Path('index.html').read_text()
+          assert current.replace('  <link rel="stylesheet" href="u7.css">\n','').replace('<script defer src="u7.js"></script>\n','')==original
+          for n in ('u2','u3','u4','u5','u6','u7'):
+              assert current.count(f'href="{n}.css"')==1
+              assert current.count(f'src="{n}.js"')==1
+          print('PASS exact U6 ancestry; unchanged audio/HTML baseline and source-only scope',flush=True)
+          PY
+      - name: Configure Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Playwright Chromium only
+        run: |
+          python -m pip install --disable-pip-version-check playwright==1.55.0
+          python -m playwright install --with-deps chromium
+      - name: Inherited U3 screenshot and behavior regression
+        run: python tests/u3_smoke.py
+      - name: Inherited U4 keyboard and recording UI regression
+        run: python tests/u4_smoke.py
+      - name: Inherited U5 visual stage/queue regression
+        run: python tests/u5_smoke.py
+      - name: Inherited U6 accessible filters regression
+        run: python tests/u6_smoke.py
+      - name: U7 in-flow queue/mixer, keyboard and screenshots
+        run: python tests/u7_smoke.py
+      - name: Verify original screenshot manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for phase in u4 u5 u6 u7; do
+            case "$phase" in
+              u4) expected=12 ;;
+              u5) expected=15 ;;
+              u6|u7) expected=16 ;;
+            esac
+            test "$(find "$phase-evidence" -maxdepth 1 -name "$phase-*.png" | wc -l)" -eq "$expected"
+            (cd "$phase-evidence" && sha256sum --check sha256.txt)
+          done
+      - name: Retain original U3–U7 screenshot evidence (never goldens)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: roomtone-u7-original-visual-evidence
+          path: |
+            u7-evidence/
+            u6-evidence/
+            u5-evidence/
+            u4-evidence/
+            u3-*.png
+          if-no-files-found: warn
+          retention-days: 30

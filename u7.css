@@ -1,0 +1,47 @@
+/* ROOMTONE U7 — verified 390px screenshot defect: mobile bottom Queue/Mixer
+   overlayed transport and practice controls. It now occupies its own row
+   before Stage. Original global fixed emergency mute retains highest priority. */
+@media(max-width:680px){
+  .rt-stage-view .rt-u5-mobile-dock.rt-u7-stage-dock{
+    display:flex;
+    position:sticky;
+    top:var(--rt-u7-sticky-top,126px);
+    left:auto;
+    right:auto;
+    bottom:auto;
+    z-index:45;
+    width:100%;
+    min-height:55px;
+    margin:0 0 11px;
+    padding:5px;
+    border:1px solid #49445c;
+    background:#1d1d2b;
+    box-shadow:0 4px 12px #0007;
+  }
+  .rt-stage-view .rt-u7-stage-dock button{
+    flex:1 1 0;
+    min-height:44px;
+    font-size:12px;
+    padding:8px 12px;
+    border-color:#5b536d;
+    justify-content:space-between;
+  }
+  .rt-stage-layout{min-width:0}
+  .rt-stage-view .rt-view-title{margin-bottom:11px}
+  .rt-mobile-mute{
+    right:max(12px,env(safe-area-inset-right,0px));
+    bottom:max(12px,env(safe-area-inset-bottom,0px));
+    min-height:52px;
+    z-index:96;
+  }
+  .rt-stage-view .stage{scroll-margin-top:190px}
+  .rt-stage-view :is(.stage-controls,.stage-timeline,.loop-bar,.performance-bar){
+    scroll-margin-bottom:calc(68px + env(safe-area-inset-bottom,0px));
+  }
+}
+@media(max-width:350px){
+  .rt-stage-view .rt-u7-stage-dock button{font-size:11px;padding:7px}
+}
+@media(prefers-reduced-motion:reduce){
+  .rt-stage-view .rt-u7-stage-dock{transition:none!important}
+}
