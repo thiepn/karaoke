@@ -35,7 +35,7 @@ jobs:
           test -f native/a3/tests/dsp_tests.cpp
           python - <<'PY'
           from pathlib import Path
-          html=Path('index.html').read_text()
+          html=Path('index.html').read_text(encoding='utf-8')
           assert html.count('src="audio-opt.js"')==1
           assert html.count('src="u4.js"')==1
           print('PASS preserved browser references')
