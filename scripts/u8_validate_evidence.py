@@ -7,7 +7,7 @@ template. Synthetic unit tests cannot satisfy HU7-01 through HU7-08.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import json
 import re
@@ -94,6 +94,11 @@ def validate(payload: object) -> dict:
                     raise ValueError("missing offset")
             except (ValueError, TypeError, AttributeError) as exc:
                 raise ValueError(f"{test_id}: observed_at requires ISO-8601 timezone") from exc
+            # A future-dated human observation is not a valid witness timeline.
+            # Allow modest device clock drift; this is an intake chronology
+            # sanity check, NOT proof that the event actually occurred.
+            if when.astimezone(timezone.utc) > datetime.now(timezone.utc) + timedelta(minutes=10):
+                raise ValueError(f"{test_id}: observed_at cannot be more than ten minutes in the future")
             ref = case["private_evidence_id"]
             digest = case["evidence_sha256"]
             if (ref is None) != (digest is None):
