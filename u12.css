@@ -15,6 +15,14 @@ body.in-focus #rtStagePanel.rt-view {
 /* Evidence: U11 desktop focus screenshot exposed underlying mix/sidebar/footer.
    The original later inline style lowered fixed fullscreen Stage to z-index:100.
    Keep focus above ALL existing stage overlays, but within its own scrollport. */
+/* The U1 .rt-view entrance animation ends with transform:translateY(0)
+   and animation-fill-mode:both. Even an identity transform establishes a
+   containing block for fixed descendants. Clear it only during fullscreen
+   focus so #stage really fills the viewport, not the padded workspace. */
+body.in-focus .rt-stage-view.rt-view {
+  animation: none;
+  transform: none;
+}
 body.in-focus #stage.focus-mode {
   position: fixed;
   inset: 0;
