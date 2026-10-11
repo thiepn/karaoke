@@ -193,6 +193,14 @@ with sync_playwright() as p:
           const cue=document.querySelector('#rtU5LyricCue').getBoundingClientRect();
           return lyric.bottom+6<=cue.top;
         }"""), "focus placeholder does not collide with U7 cue", width)
+        print("U12 FOCUS GEOMETRY", width, page.locator("#stage").evaluate("""e=>{
+            const c=getComputedStyle(e),b=e.getBoundingClientRect();
+            return {position:c.position,zIndex:c.zIndex,overflowY:c.overflowY,
+                    overscrollBehavior:c.overscrollBehavior,
+                    rect:[b.left,b.top,b.right,b.bottom,b.width,b.height],
+                    viewport:[innerWidth,innerHeight],
+                    scroll:[e.scrollHeight,e.clientHeight]};
+        }"""), flush=True)
         check(page.locator("#stage").evaluate("""(e)=>{
             const css=getComputedStyle(e);
             const rect=e.getBoundingClientRect();
