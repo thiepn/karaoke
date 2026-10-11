@@ -118,8 +118,16 @@ with sync_playwright() as pw:
                "route clears fullscreen state",width)
         verify(not page.locator("body").evaluate("e=>e.classList.contains('in-focus')"),
                "route releases focus body lock",width)
+        diagnostic=page.evaluate("""()=>{const h=document.getElementById('rtSongsHeading');return {
+            active:document.activeElement?.id, songsHidden:document.getElementById('rtSongsPanel').hidden,
+            songsInert:document.getElementById('rtSongsPanel').inert,
+            headerInert:document.querySelector('.rt-header').inert,
+            stageFocus:document.querySelector('#stage').classList.contains('focus-mode'),
+            headingBlocked:!!h.closest('[inert],[hidden]'),headingRects:h.getClientRects().length};
+        }""")
+        print("U15 SONGS FOCUS DIAGNOSTIC",width,diagnostic,flush=True)
         verify(page.evaluate("document.activeElement?.id==='rtSongsHeading'"),
-               "destination Songs heading receives keyboard focus",width)
+               "destination Songs heading receives keyboard focus: "+repr(diagnostic),width)
         verify(page.locator(".rt-header").evaluate("e=>!e.inert"),
                "navigation becomes interactive in Songs view",width)
         page.screenshot(path=str(OUT/f"u15-songs-viewport-{width}.png"),full_page=False)

@@ -89,6 +89,13 @@
       // Exit via the same original button before U2's capture listener
       // reveals Songs. Do not suppress or replace its original navigation.
       focusButton.click();
+      // U2's target-level click handler completes navigation later in this
+      // same event dispatch. Commit destination focus on the next frame,
+      // after Stage mutations and the destination view are finalized.
+      requestAnimationFrame(()=>{
+        if(!modalActive()&&!document.getElementById('rtSongsPanel')?.hidden)
+          moveToSongs();
+      });
       return;
     }
     const nav=target.closest('[data-rt-view]');
