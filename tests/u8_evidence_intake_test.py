@@ -95,6 +95,23 @@ class IntakeContract(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "timezone"):
             validate(p)
 
+    def test_rejects_network_urls_and_paths_as_private_evidence_ids(self):
+        # SYNTHETIC values only: no screenshot or actual owner witness.
+        for ref in ("https://example.invalid/evidence.png",
+                    "file:///tmp/private.png", "../private/witness.png",
+                    "owner-local:https://example.invalid"):
+            with self.subTest(ref=ref):
+                p = copy.deepcopy(self.base)
+                x = p["tests"][0]
+                x.update(status="FAIL", observer="SYNTHETIC_TEST_ONLY",
+                         observed_at="2026-10-11T17:30:00+02:00",
+                         device="SYNTHETIC_PHONE", browser="SYNTHETIC_CHROME",
+                         observation="Synthetic validation of private evidence locator only",
+                         attests_direct_observation=True,
+                         private_evidence_id=ref, evidence_sha256="a" * 64)
+                with self.assertRaisesRegex(ValueError, "private local evidence identifier"):
+                    validate(p)
+
     def test_rejects_private_media_pointer_without_hash(self):
         p = copy.deepcopy(self.base)
         x = p["tests"][0]
