@@ -1,0 +1,77 @@
+name: ROOMTONE U10 Witness Chronology & Source Gate (NO_GO)
+on:
+  push:
+    branches:
+      - docs/u10-witness-chronology-guard
+  pull_request:
+    branches:
+      - docs/u9-witness-integrity-qualification
+permissions:
+  contents: read
+jobs:
+  qualify:
+    name: U10 exact-head source-only witness-integrity qualification
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact U9 ancestry and frozen UI/audio/evidence template
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          python - <<'PY'
+          import subprocess
+          from pathlib import Path
+          parent='cdf1d4fac581a176a44e28f5c8b3dffac44c3678'
+          assert subprocess.run(['git','merge-base','--is-ancestor',parent,'HEAD']).returncode==0
+          changes=set(subprocess.check_output(
+              ['git','diff','--name-only',parent,'HEAD'],text=True).splitlines())
+          allowed={
+              'scripts/u8_validate_evidence.py',
+              'tests/u8_evidence_intake_test.py',
+              'docs/U10_OWNER_WITNESS_TRIAGE.md',
+              '.github/workflows/u10-evidence.yml'
+          }
+          assert changes==allowed,changes
+          for path in (
+              'index.html','u5.css','u5.js','u6.css','u6.js','u7.css','u7.js',
+              'docs/evidence/U8_HU7_ACCEPTANCE.template.json',
+              'docs/U8_HUMAN_EVIDENCE_HANDOFF.md',
+              'docs/U9_WITNESS_FINDINGS_QUALIFICATION.md'
+          ):
+              original=subprocess.check_output(['git','show',f'{parent}:{path}'])
+              assert Path(path).read_bytes()==original,path+' diverged'
+          print('PASS qualified U9 parent; UI/audio/template and earlier drafts unchanged')
+          PY
+      - name: Install Python (stdlib tests only)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Regress current and historical witness-intake defects
+        run: python -m unittest discover -s tests -p 'u8_evidence_intake_test.py' -v
+      - name: Assert no human observations and NO_GO
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/u8_validate_evidence.py docs/evidence/U8_HU7_ACCEPTANCE.template.json > /tmp/u10-intake.json
+          python - <<'PY'
+          import json
+          obj=json.load(open('/tmp/u10-intake.json'))
+          assert obj['claimed_observed']==0
+          assert obj['human_truth_verified'] is False
+          assert obj['release']=='NO_GO'
+          assert list(obj['statuses'].values())==['NOT_TESTED']*7+['NOT_GIVEN']
+          print('PASS eight human gates remain NOT_TESTED/NOT_GIVEN; production NO_GO')
+          PY
+      - name: Non-release statement
+        run: |
+          echo 'U10 checks source validity only. No real-device/owner test is implied.'
+          echo 'No live site, microphone, production data, deploy or privileged workflow used.'

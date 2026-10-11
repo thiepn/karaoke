@@ -1,6 +1,7 @@
 """U8 evidence intake contract tests. ALL sample witnesses here are synthetic."""
 from __future__ import annotations
 import copy
+from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 import sys
@@ -137,6 +138,34 @@ class IntakeContract(unittest.TestCase):
                          private_evidence_id=ref, evidence_sha256="a" * 64)
                 with self.assertRaisesRegex(ValueError, "private local evidence identifier"):
                     validate(p)
+
+    def test_rejects_impossible_future_owner_observation(self):
+        # Reproduced U9 gap: ISO-8601 9999 was parsed with valid tzinfo,
+        # but had no upper chronology bound and passed the format validator.
+        # Fixture is synthetic and is NOT evidence of a human test.
+        p = copy.deepcopy(self.base)
+        x = p["tests"][0]
+        x.update(status="PASS", observer="SYNTHETIC_TEST_ONLY",
+                 observed_at="9999-12-31T23:59:59+00:00",
+                 device="SYNTHETIC_PHONE", browser="SYNTHETIC_CHROME",
+                 observation="Synthetic impossible future-dated witness record",
+                 attests_direct_observation=True)
+        with self.assertRaisesRegex(ValueError, "future"):
+            validate(p)
+
+    def test_small_future_device_clock_skew_is_still_format_valid(self):
+        # The clock-skew allowance does not certify a real observer.
+        p = copy.deepcopy(self.base)
+        x = p["tests"][0]
+        x.update(status="FAIL", observer="SYNTHETIC_TEST_ONLY",
+                 observed_at=(datetime.now(timezone.utc)+timedelta(minutes=2)).isoformat(),
+                 device="SYNTHETIC_PHONE", browser="SYNTHETIC_CHROME",
+                 observation="Synthetic timestamp fixture; no real observed visual defect",
+                 attests_direct_observation=True)
+        result = validate(p)
+        self.assertEqual(result["claimed_observed"], 1)
+        self.assertIs(result["human_truth_verified"], False)
+        self.assertEqual(result["release"], "NO_GO")
 
     def test_rejects_private_media_pointer_without_hash(self):
         p = copy.deepcopy(self.base)
