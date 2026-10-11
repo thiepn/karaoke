@@ -1,0 +1,64 @@
+name: ROOMTONE A3 Native Feasibility
+
+on:
+  push:
+    branches: [feat/a3-native-audio-prototype]
+  pull_request:
+    branches: [feat/audio-optimization-h1-calibration]
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: ${{ matrix.os }} native build and DSP
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact event head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact source and preserved browser entry
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test -f native/a3/src/main.cpp
+          test -f native/a3/src/vocal_dsp.hpp
+          test -f native/a3/tests/dsp_tests.cpp
+          python - <<'PY'
+          from pathlib import Path
+          html=Path('index.html').read_text()
+          assert html.count('src="audio-opt.js"')==1
+          assert html.count('src="u4.js"')==1
+          print('PASS preserved browser references')
+          PY
+      - name: Configure
+        run: cmake -S native/a3 -B build/a3 -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build/a3 --config Release --parallel 2
+      - name: DSP unit test
+        run: ctest --test-dir build/a3 -C Release --output-on-failure
+      - name: Validate Windows native CLI
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem build/a3 -Filter roomtone_a3_native.exe -Recurse | Select-Object -First 1
+          if (-not $exe) { throw "Missing native EXE" }
+          & $exe.FullName --help
+          if ($LASTEXITCODE -ne 0) { throw "CLI help failed" }
+      - name: Retain unsigned experimental Windows EXE
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: roomtone-a3-native-windows-unsigned
+          path: build/a3/**/roomtone_a3_native.exe
+          if-no-files-found: error
+          retention-days: 14
