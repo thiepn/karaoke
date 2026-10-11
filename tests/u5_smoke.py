@@ -86,6 +86,7 @@ with sync_playwright() as p:
             ok(page.locator('.rt-u5-mobile-dock button').first.get_attribute('aria-expanded')=='true','expanded semantics')
             ok(page.locator('.rt-side-mix').is_hidden(),'unselected mix sheet remains hidden')
             ok(page.locator('#rtMobileMute').is_visible(),'emergency mute remains visible')
+            ok(page.evaluate("""()=>{const a=document.querySelector('.rt-u5-mobile-dock').getBoundingClientRect();const b=document.querySelector('#rtMobileMute').getBoundingClientRect();return a.right+3<=b.left&&Math.abs(a.bottom-b.bottom)<8;}"""),'mobile dock and emergency mute do not overlap')
             page.locator('.rt-side-queue .rt-u5-sheet-close').click()
             ok(page.locator('.rt-stage-sidecar').is_hidden(),'queue sheet closes')
             ok(page.locator('.rt-u5-mobile-dock button').first.evaluate('(e)=>e===document.activeElement'),'focus returns to trigger')

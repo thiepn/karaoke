@@ -41,3 +41,11 @@ strategy that prevents unintended multiple production deployments.
 U6 — Original Screenshot Remediation & Human UX Acceptance. Review the real U5
 screenshots, correct reproduced layout/accessibility defects on a new stacked
 source-only draft, exact-head CI, then obtain genuine owner device evidence.
+
+## Screenshot-driven U5 correction
+Initial U5 Chromium screenshots showed the previous full-width fixed emergency
+mute obscuring Stage transport and Songs controls while a second U5 dock floated
+above it. The corrective commit places Queue/Mixer and the still-visible panic
+mute side-by-side in one restrained fixed bottom rail at narrow widths. An
+original Chromium DOM-geometry test checks that the two rails do not overlap.
+Visual inspection is not a substitute for owner acceptance on a physical phone.

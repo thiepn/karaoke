@@ -16,7 +16,7 @@
   function refreshStage(){
     const hasSong=!!$('stagePlay')&&!$('stagePlay').disabled;
     const playing=hasSong&&!player.paused&&!player.ended;
-    const next=hasSong?(playing?'PLAYING':'READY / PAUSED'):'AWAITING TRACK';
+    const next=hasSong?(playing?'PLAYING':player.currentTime>0?'PAUSED':'READY'):'AWAITING TRACK';
     if(state.textContent!==next)state.textContent=next;
     const hasLyrics=!current?.classList.contains('placeholder')&&!!current?.textContent?.trim();
     const cueText=hasLyrics?'SYNCHRONIZED LYRICS':hasSong?'ADD .LRC TO FOLLOW ALONG':'LOCAL AUDIO · NO UPLOAD';
@@ -70,13 +70,14 @@
   const side=view.querySelector('.rt-stage-sidecar');
   const queuePanel=side?.querySelector('.rt-side-queue'),mixPanel=side?.querySelector('.rt-side-mix');
   if(side&&queuePanel&&mixPanel){
+    queuePanel.id='rtU5QueueSheet';mixPanel.id='rtU5MixSheet';
     const mobile=window.matchMedia('(max-width: 680px)');
     const dock=el('div','rt-u5-mobile-dock');dock.setAttribute('role','group');dock.setAttribute('aria-label','Stage queue and mix panels');
     const backdrop=el('button','rt-u5-sheet-backdrop');backdrop.type='button';backdrop.hidden=true;backdrop.setAttribute('aria-label','Close stage panel');view.append(backdrop);
     let open=null;const triggers=new Map();
-    const queueButton=el('button','','Queue');queueButton.type='button';queueButton.setAttribute('aria-controls','rtQueueTitle');queueButton.setAttribute('aria-expanded','false');
+    const queueButton=el('button','','Queue');queueButton.type='button';queueButton.setAttribute('aria-controls','rtU5QueueSheet');queueButton.setAttribute('aria-expanded','false');
     const count=el('span','','00');count.id='rtU5DockQueueCount';queueButton.append(count);
-    const mixButton=el('button','','Quick mix');mixButton.type='button';mixButton.setAttribute('aria-controls','rtMixTitle');mixButton.setAttribute('aria-expanded','false');mixButton.append(el('span','','OPEN'));
+    const mixButton=el('button','','Mixer');mixButton.type='button';mixButton.setAttribute('aria-controls','rtU5MixSheet');mixButton.setAttribute('aria-expanded','false');mixButton.append(el('span','','OPEN'));
     triggers.set('queue',queueButton);triggers.set('mix',mixButton);dock.append(queueButton,mixButton);view.append(dock);
     function setOpen(kind,restoreFocus=false){
       if(kind&&!mobile.matches)return;

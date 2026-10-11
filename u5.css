@@ -151,3 +151,19 @@ body{background:#0d0e13;color:var(--rt-u5-paper)}
 }
 @media(max-width:360px){.stage .performance-bar .btn{font-size:10px}.stage .stage-controls .btn{font-size:11px}.stage .lyric-current{font-size:29px}.rt-stage-layout>.stage{padding:13px 10px}.rt-u5-filter{font-size:10px}}
 @media(prefers-reduced-motion:reduce){.stage .lyric-current,.rt-u5-mobile-dock button,.rt-u5-filter{transition:none!important}}
+
+/* U5 original screenshot defect correction: one slim bottom rail, not two
+   fixed full-width layers over the singing surface. Panic stays accessible. */
+@media(max-width:680px){
+ .rt-u5-mobile-dock{bottom:12px;right:168px;left:12px;min-height:52px;padding:4px;gap:4px}
+ .rt-u5-mobile-dock button{min-height:42px;padding:7px 6px;font-size:11px;justify-content:center;gap:4px}
+ .rt-u5-mobile-dock button span{font-size:10px}
+ .rt-mobile-mute{left:auto;right:12px;bottom:12px;width:148px;min-height:52px;font-size:11px;padding:7px 5px}
+ body[data-rt-u5-sheet="queue"] .rt-stage-view:not([hidden]) .rt-stage-sidecar,
+ body[data-rt-u5-sheet="mix"] .rt-stage-view:not([hidden]) .rt-stage-sidecar{bottom:74px;max-height:min(72dvh,630px)}
+}
+@media(max-width:360px){
+ .rt-u5-mobile-dock{right:153px}
+ .rt-mobile-mute{width:133px;font-size:10px}
+ .rt-u5-mobile-dock button{font-size:10px}
+}
