@@ -1,0 +1,73 @@
+name: ROOMTONE U8 Human Evidence Intake Integrity (NO_GO)
+on:
+  push:
+    branches:
+      - docs/u8-human-evidence-intake
+  pull_request:
+    branches:
+      - feat/u7-owner-visual-handoff
+permissions:
+  contents: read
+jobs:
+  intake:
+    name: U8 exact-head source-only intake contract (NOT human acceptance)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout exact triggering U8 commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact parent and preserve U7 source/release gates
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          python - <<'PY'
+          import subprocess
+          from pathlib import Path
+          parent="1c7dd8f10d2f2fcccf1ac9809f1f9047dbb4666a"
+          assert subprocess.run(
+              ['git','merge-base','--is-ancestor',parent,'HEAD'],
+              check=False).returncode==0,'U8 is not a descendant of qualified U7'
+          actual=set(subprocess.check_output(
+              ['git','diff','--name-only',parent,'HEAD'],text=True).splitlines())
+          allow={
+              'docs/U8_HUMAN_EVIDENCE_HANDOFF.md',
+              'docs/evidence/U8_HU7_ACCEPTANCE.template.json',
+              'scripts/u8_validate_evidence.py',
+              'tests/u8_evidence_intake_test.py',
+              '.github/workflows/u8-evidence.yml',
+          }
+          assert actual<=allow and {
+              'docs/evidence/U8_HU7_ACCEPTANCE.template.json',
+              'scripts/u8_validate_evidence.py',
+              'tests/u8_evidence_intake_test.py',
+          }<=actual,actual
+          for path in ['index.html','u7.css','u7.js','u6.css','u6.js']:
+              original=subprocess.check_output(['git','show',parent+':'+path])
+              assert Path(path).read_bytes()==original,path+' changed unexpectedly'
+          print('PASS U7 ancestry and source-only U8 diff; audio/player/UI unchanged')
+          PY
+      - name: Configure Python (no external dependencies)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate blank eight-gate human intake template
+        run: |
+          python scripts/u8_validate_evidence.py docs/evidence/U8_HU7_ACCEPTANCE.template.json
+      - name: Verify rejection of false/missing human observations
+        run: |
+          python -m unittest discover -s tests -p 'u8_evidence_intake_test.py' -v
+      - name: Report human gate truthfulness
+        shell: bash
+        run: |
+          echo 'U8 source-only intake contract passed.'
+          echo 'HU7-01 through HU7-07: NOT_TESTED.'
+          echo 'HU7-08: NOT_GIVEN.'
+          echo 'THIS IS NOT HUMAN ACCEPTANCE OR RELEASE AUTHORIZATION.'
+          echo 'PRODUCTION NO_GO; no screenshot/human data processed.'
