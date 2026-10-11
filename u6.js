@@ -26,6 +26,29 @@
     }
   }
 
+  // Stage mirrors have the same double-ordinal defect: "02 2. Song".
+  const stageMirror=$('rtQueueMirror'),now=$('rtU2SongNow');
+  function tidyStageMirror(){
+    if(stageMirror){
+      for(const button of stageMirror.querySelectorAll('.rt-queue-choice')){
+        const ordinal=Number(button.querySelector('.rt-queue-index')?.textContent);
+        const label=button.lastElementChild;
+        if(!Number.isInteger(ordinal)||ordinal<1||!label||label.classList.contains('rt-queue-index'))continue;
+        const cleaned=(label.textContent||'').replace(new RegExp('^\\s*'+ordinal+'\\.\\s+'),'');
+        if(cleaned!==label.textContent){label.textContent=cleaned;button.title=cleaned;}
+      }
+    }
+    if(now){
+      const rows=[...source.querySelectorAll('.queue-item')];
+      const index=rows.findIndex(li=>li.classList.contains('current'))+1;
+      if(index>0){
+        const cleaned=(now.textContent||'').replace(new RegExp('^\\s*'+index+'\\.\\s+'),'');
+        if(now.textContent!==cleaned)now.textContent=cleaned;
+      }
+    }
+  }
+  if(stageMirror)new MutationObserver(tidyStageMirror).observe(stageMirror,{childList:true});
+
   const empty=document.createElement('p');
   empty.className='rt-u6-filter-empty';
   empty.id='rtU6FilterEmpty';
@@ -35,6 +58,7 @@
 
   function repair(){
     tidyLabels();
+    tidyStageMirror();
     const rows=[...list.querySelectorAll('.rt-u2-song-row')];
     const visible=rows.filter(row=>!row.hidden).length;
     const total=source.querySelectorAll('.queue-item').length;

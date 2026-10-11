@@ -21,6 +21,14 @@ inherited from U5. Only two asset references are added to index.html.
    WITHOUT suppressing the original Escape emergency mute behavior.
 5. Visual polish: modest song row legibility and touch target improvements.
 
+### Further original-screenshot reconciliation
+The retained desktop Stage screenshot also shows double ordinals (02 / 2. Song)
+in its queue mirror and the library current-song summary. U6 corrects those
+presentation labels, preserving the actual authoritative queue title.
+The first U6 workflow exposed an overly strict source-title assertion, which
+was corrected to verify the existing song identity and preserve source queue
+content rather than assume an uncontracted ordinal format.
+
 ## Automated evidence
 - Exact-head checkout, known U5 ancestor and source-only six-file diff guard.
 - Inherited U3/U4/U5 Playwright browser regressions unchanged.
