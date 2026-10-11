@@ -1,0 +1,238 @@
+/* ROOMTONE U12: evidence-grounded Stage, fullscreen, and local-library density.
+   Additive presentation only. Existing audio, recording, storage, handlers,
+   U7 Queue/Mixer & emergency Mute remain unchanged. */
+
+/* Critical Chromium reproduction: .rt-view uses an entrance animation with
+   fill-mode:both, retaining transform:translateY(0). Even a zero transform
+   creates a containing block for fixed descendants, so fullscreen Stage
+   was offset 43px and -11px at 1440px. Disable ONLY that animation while
+   the existing Stage is in focus; no other workspace motion changes. */
+body.in-focus #rtStagePanel.rt-view {
+  animation: none !important;
+  transform: none !important;
+}
+
+/* Evidence: U11 desktop focus screenshot exposed underlying mix/sidebar/footer.
+   The original later inline style lowered fixed fullscreen Stage to z-index:100.
+   Keep focus above ALL existing stage overlays, but within its own scrollport. */
+/* The U1 .rt-view entrance animation ends with transform:translateY(0)
+   and animation-fill-mode:both. Even an identity transform establishes a
+   containing block for fixed descendants. Clear it only during fullscreen
+   focus so #stage really fills the viewport, not the padded workspace. */
+body.in-focus .rt-stage-view.rt-view {
+  animation: none;
+  transform: none;
+}
+body.in-focus #stage.focus-mode {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  height: 100dvh;
+  max-height: 100dvh;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: #0c0e15;
+  border: 0;
+  box-sizing: border-box;
+  isolation: isolate;
+}
+body.in-focus #stage.focus-mode .stage-bottom {
+  flex: none;
+  margin-top: 0;
+}
+body.in-focus #stage.focus-mode .lyrics-screen {
+  flex: 0 0 auto;
+  min-height: clamp(285px,39dvh,455px);
+  margin: 18px auto 14px;
+}
+/* Prevent the fullscreen safety control from clipping against the screen edge.
+   U7's same original Mute button and focus behavior are untouched. */
+body.in-focus #stage.focus-mode > .rt-mobile-mute {
+  z-index: 3200;
+}
+
+/* U11 mobile screenshots show the empty-LRC placeholder consuming much
+   of the singing surface. Tighten ONLY the placeholder state; active
+   synchronized lyric type is not reduced or replaced. */
+@media(max-width:680px) {
+  .rt-stage-layout > #stage:not(.focus-mode) {
+    padding-top: 16px;
+    padding-bottom: 14px;
+  }
+  #stage:not(.focus-mode) .rt-u5-stage-meta {
+    margin-bottom: 9px;
+    padding-bottom: 9px;
+  }
+  #stage:not(.focus-mode) .stage-top {
+    gap: 6px;
+  }
+  #stage:not(.focus-mode) .stage-title {
+    font-size: clamp(24px, 6.5vw, 34px);
+    line-height: 1.12;
+    margin-top: 6px;
+  }
+  #stage:not(.focus-mode) .stage-sub {
+    margin-top: 3px;
+  }
+  #stage:not(.focus-mode) .lyrics-screen:has(.lyric-current.placeholder) {
+    min-height: clamp(205px,27dvh,255px);
+    margin-top: 11px;
+    margin-bottom: 8px;
+    padding: 46px 10px 43px;
+    gap: 9px;
+  }
+  #stage:not(.focus-mode) .lyric-current.placeholder {
+    font-size: clamp(22px,6.25vw,29px);
+    line-height: 1.18;
+    max-width: 97%;
+    min-height: 0;
+    text-wrap: balance;
+  }
+  #stage:not(.focus-mode) .stage-controls {
+    margin-bottom: 11px;
+  }
+  #stage:not(.focus-mode) .stage-timeline {
+    padding: 5px 0 8px;
+  }
+  #stage:not(.focus-mode) .loop-bar {
+    padding: 8px;
+  }
+  #stage:not(.focus-mode) .stage-advanced {
+    margin-top: 8px;
+  }
+  body.in-focus #stage.focus-mode {
+    padding: 14px max(12px,env(safe-area-inset-right,0px))
+      calc(24px + env(safe-area-inset-bottom,0px))
+      max(12px,env(safe-area-inset-left,0px));
+  }
+  body.in-focus #stage.focus-mode .rt-u5-stage-meta {
+    padding-right: 112px;
+  }
+  body.in-focus #stage.focus-mode .stage-top {
+    gap: 6px;
+  }
+  body.in-focus #stage.focus-mode .lyrics-screen {
+    min-height: clamp(230px,30dvh,340px);
+    margin: 12px auto;
+    padding-top: 50px;
+    padding-bottom: 60px;
+  }
+  body.in-focus #stage.focus-mode .stage-controls {
+    margin-bottom: 9px;
+  }
+  body.in-focus #stage.focus-mode .stage-timeline {
+    padding: 6px 0 8px;
+  }
+  body.in-focus #stage.focus-mode .loop-bar {
+    padding: 8px;
+  }
+}
+
+/* U11 Songs screenshots repeat the selected title above the actual row,
+   and a second prose count after it. Keep data, aria-live and live status:
+   make the redundant status visually hidden (but accessible). */
+#rtSongsContent #rtU2SongStatus {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+#rtSongsContent .rt-u2-song-list {
+  margin-top: 12px;
+  max-height: min(470px,56dvh);
+}
+#rtSongsContent .rt-u2-song-row {
+  min-height: 54px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+#rtSongsContent .rt-u2-song-select {
+  min-height: 42px;
+  line-height: 1.35;
+}
+#rtSongsContent .rt-u5-filter-row {
+  padding-top: 13px;
+}
+#rtSongsContent .rt-u5-filter {
+  min-height: 44px;
+}
+#rtSongsContent .rt-u2-head {
+  margin-bottom: 15px;
+}
+#rtSongsContent .rt-u2-strip {
+  margin-top: 14px;
+  padding-top: 12px;
+}
+
+/* Small phones: reduce duplicate information without removing handlers
+   or hiding the track list. The current song is shown in the actual row. */
+@media(max-width:680px) {
+  #rtSongsContent .rt-u2-console {
+    padding: 16px 15px;
+  }
+  #rtSongsContent .rt-u2-head {
+    gap: 8px;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+  }
+  #rtSongsContent .rt-u2-head h2 {
+    font-size: clamp(23px,6.4vw,29px);
+  }
+  #rtSongsContent .rt-u2-head p {
+    line-height: 1.5;
+  }
+  #rtSongsContent .rt-u2-toolbar {
+    gap: 8px;
+  }
+  #rtSongsContent .rt-u5-filter-row {
+    gap: 8px;
+    padding-top: 11px;
+  }
+  #rtSongsContent .rt-u5-filter {
+    padding: 7px 4px;
+    font-size: 11px;
+    min-height: 44px;
+  }
+  #rtSongsContent #rtU2SongNow {
+    display: none;
+  }
+  #rtSongsContent .rt-u2-strip {
+    margin-top: 11px;
+    padding-top: 10px;
+  }
+  #rtSongsContent .rt-u2-song-list {
+    margin-top: 7px;
+  }
+  #rtSongsContent .rt-u2-song-row {
+    min-height: 54px;
+    padding: 5px 3px;
+  }
+  #rtSongsContent .rt-u2-song-row.active {
+    padding-left: 10px;
+  }
+  #rtSongsContent .rt-u2-song-state {
+    white-space: nowrap;
+  }
+  #rtSongsContent .rt-u3-disclosure > .rt-u3-summary {
+    min-height: 61px;
+    padding: 12px 13px;
+  }
+}
+@media(max-width:355px) {
+  #stage:not(.focus-mode) .lyrics-screen:has(.lyric-current.placeholder) {
+    min-height: 200px;
+  }
+  #rtSongsContent .rt-u2-song-row { gap: 6px; }
+}
+@media(prefers-reduced-motion: reduce) {
+  #stage .lyrics-screen, #rtSongsContent .rt-u2-song-row {
+    transition: none !important;
+  }
+}
