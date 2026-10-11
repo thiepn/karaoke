@@ -1,0 +1,29 @@
+name: ROOMTONE U5 Source-Only Owner Release Preparation
+
+on:
+  push:
+    branches: [docs/u5-hardware-owner-gates]
+  pull_request:
+    branches: [feat/u4-after-hours-release-candidate]
+
+permissions:
+  contents: read
+
+jobs:
+  source-only:
+    name: Verify U5 docs and untouched U4 source
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact source head without write credentials
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify checkout SHA matches triggering event
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+      - name: Run source-only hardware/release documentation gate
+        run: python3 tests/u5_source_gate.py
