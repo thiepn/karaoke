@@ -1,0 +1,133 @@
+name: ROOMTONE U15 Independent U14 Reconciliation (NO_GO)
+on:
+  push:
+    branches:
+      - docs/u15-u14-reconciliation-owner-handoff
+  pull_request:
+    branches:
+      - feat/u14-focus-modal-accessibility
+permissions:
+  contents: read
+jobs:
+  witness:
+    name: U15 exact-head source-only reconciliation and Chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout triggering exact source SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify qualified U14 PR18 parent and zero inherited mutations
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+          parent='194862723f2c89d72ad32b0f8591476095197e50'
+          assert subprocess.run(['git','merge-base','--is-ancestor',parent,'HEAD'],check=False).returncode == 0
+          changed=set(subprocess.check_output(['git','diff','--name-only',parent,'HEAD'],text=True).splitlines())
+          expected={'.github/workflows/u15-reconciliation.yml',
+                    'docs/U15_U14_RECONCILIATION.md',
+                    'docs/U15_OWNER_ACCEPTANCE_HANDOFF.md',
+                    'tests/u15_reconciliation_smoke.py'}
+          assert changed == expected,changed
+          for path in ['index.html','u14.js','tests/u14_smoke.py',
+                       'docs/U14_ACCESSIBILITY_EVIDENCE.md',
+                       '.github/workflows/u14-ui.yml']:
+              assert Path(path).read_bytes()==subprocess.check_output(['git','show',f'{parent}:{path}'])
+          html=Path('index.html').read_text()
+          assert html.count('src="u14.js"')==1
+          assert 'u15.js' not in html and 'u15.css' not in html
+          for n in ('u2','u3','u4','u5','u6','u7','u11','u12','u13'):
+              path=f'{n}.css'
+              assert Path(path).read_bytes()==subprocess.check_output(['git','show',f'{parent}:{path}'])
+              if n not in ('u11','u12','u13'):
+                  path=f'{n}.js'
+                  assert Path(path).read_bytes()==subprocess.check_output(['git','show',f'{parent}:{path}'])
+          for path in ['scripts/u8_validate_evidence.py','tests/u8_evidence_intake_test.py',
+                       'docs/evidence/U8_HU7_ACCEPTANCE.template.json']:
+              assert Path(path).read_bytes()==subprocess.check_output(['git','show',f'{parent}:{path}'])
+          print('PASS exact U14 PR18 ancestry; four evidence-only U15 files; playback, data and gates unchanged')
+          PY
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned synthetic browser dependency
+        run: |
+          python -m pip install --disable-pip-version-check playwright==1.55.0
+          python -m playwright install --with-deps chromium
+      - name: Inherited U3 keyboard and workspace
+        run: python tests/u3_smoke.py
+      - name: Inherited U4 keyboard and recording
+        run: python tests/u4_smoke.py
+      - name: Inherited U5 Stage and Songs
+        run: python tests/u5_smoke.py
+      - name: Inherited U6 filters
+        run: python tests/u6_smoke.py
+      - name: Inherited U7 mute and focus
+        run: python tests/u7_smoke.py
+      - name: Inherited U11 mobile density
+        run: python tests/u11_smoke.py
+      - name: Inherited U12 focus geometry
+        run: python tests/u12_smoke.py
+      - name: Inherited U13 browser viewport and keyboard
+        run: python tests/u13_smoke.py
+      - name: Inherited U14 modal accessibility and AX
+        run: python tests/u14_smoke.py
+      - name: U15 PR17 45x Tab stress plus PR18 AX and inert reconciliation
+        run: python tests/u15_reconciliation_smoke.py
+      - name: Verify all original PNG manifests without updating goldens
+        shell: bash
+        run: |
+          set -euo pipefail
+          for phase in u4 u5 u6 u7 u11 u12 u13 u14 u15; do
+            case "$phase" in
+              u4) count=12 ;;
+              u5) count=15 ;;
+              u6|u7|u12|u14) count=16 ;;
+              u11) count=14 ;;
+              u13) count=12 ;;
+              u15) count=8 ;;
+            esac
+            test "$(find "$phase-evidence" -maxdepth 1 -name "$phase-*.png" | wc -l)" -eq "$count"
+            (cd "$phase-evidence" && sha256sum --check sha256.txt)
+          done
+      - name: Assert authentic HU7 observations absent and production NO_GO
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/u8_validate_evidence.py docs/evidence/U8_HU7_ACCEPTANCE.template.json > /tmp/u15-human.json
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/u15-human.json'))
+          assert d['claimed_observed']==0 and d['human_truth_verified'] is False
+          assert d['release']=='NO_GO'
+          assert list(d['statuses'].values())==['NOT_TESTED']*7+['NOT_GIVEN']
+          print('PASS U15 synthetic only: HU7 7 NOT_TESTED and HU7-08 NOT_GIVEN; production NO_GO')
+          PY
+      - name: Retain original synthetic Chromium screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: roomtone-u15-original-reconciliation-evidence
+          retention-days: 30
+          if-no-files-found: warn
+          path: |
+            u15-evidence/
+            u14-evidence/
+            u13-evidence/
+            u12-evidence/
+            u11-evidence/
+            u7-evidence/
+            u6-evidence/
+            u5-evidence/
+            u4-evidence/
+            u3-*.png
