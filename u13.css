@@ -1,0 +1,38 @@
+/* ROOMTONE U13 — viewport-focus and local library evidence hardening.
+   No audio, microphone, storage, handler or user-data changes. */
+
+/* Browser reproduction: U12 focus full-page captures included the background
+   document below the 100dvh Stage. Full-page captures are not the user
+   viewport, but root scroll should also be locked during focus. The Stage
+   remains internally scrollable, as established by U12. */
+html:has(body.in-focus) {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+body.in-focus {
+  overflow: hidden;
+}
+body.in-focus #stage.focus-mode {
+  overscroll-behavior: contain;
+}
+
+/* Screenshot-grounded at 350/390px: both "1 song shown" and "1 song" were
+   displayed together above a single track row. Keep the live filter count
+   visible; retain the original total-count DOM text for nonvisual access.
+   Never hide the filter count or the playable original song row. */
+@media (max-width:680px) {
+  #rtSongsContent #rtU2SongCount {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    padding: 0;
+    margin: -1px;
+    border: 0;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+@media (prefers-reduced-motion:reduce) {
+  body.in-focus #stage.focus-mode { scroll-behavior: auto; }
+}
