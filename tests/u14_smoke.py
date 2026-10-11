@@ -4,6 +4,7 @@ Positive acceptance gate: all sequential Tab/Shift+Tab focus remains in
 fullscreen Stage, with no microphone, production, or physical owner test.
 """
 from pathlib import Path
+import hashlib
 from playwright.sync_api import sync_playwright
 
 ROOT=Path(__file__).resolve().parent.parent
@@ -14,6 +15,9 @@ SCRIPTS={f'{n}.js':(ROOT/f'{n}.js').read_text()
          for n in ('u2','u3','u4','u5','u6','u7')}
 if (ROOT/'u14.js').exists():
     SCRIPTS['u14.js']=(ROOT/'u14.js').read_text()
+OUT=ROOT/'u14-evidence'
+OUT.mkdir(exist_ok=True)
+assert not list(OUT.glob('u14-*.png')), 'Stale U14 screenshot evidence'
 checks=0
 with sync_playwright() as pw:
     browser=pw.chromium.launch(executable_path='/usr/bin/chromium' if Path('/usr/bin/chromium').exists() else None,
@@ -38,6 +42,7 @@ with sync_playwright() as pw:
             global checks
             assert value, f'{width}px: {label}'
             checks+=1
+        p.screenshot(path=str(OUT/f'u14-stage-viewport-{width}.png'),full_page=False)
         p.locator('#stageFocus').click()
         p.wait_for_timeout(60)
         ok(p.locator('#stage').evaluate("e=>e.classList.contains('focus-mode')"),
@@ -60,6 +65,7 @@ with sync_playwright() as pw:
                'fullscreen semantics announced as dialog')
             ok(p.locator('#stage').get_attribute('aria-modal')=='true',
                'fullscreen semantics are modal only when focus is active')
+        p.screenshot(path=str(OUT/f'u14-focus-viewport-{width}.png'),full_page=False)
         p.locator('#stageFocus').focus()
         p.keyboard.press('Escape')
         ok(not p.locator('#stage').evaluate("e=>e.classList.contains('focus-mode')"),
@@ -73,4 +79,7 @@ with sync_playwright() as pw:
         print(f'U14 PASS synthetic Chromium {width}x{height} cumulative={checks}',flush=True)
         c.close()
     browser.close()
-print(f'U14 PASS {checks} keyboard containment and recovery assertions',flush=True)
+images=sorted(OUT.glob('u14-*.png'))
+assert len(images)==8, f'Expected 8 U14 viewport PNGs, got {len(images)}'
+(OUT/'sha256.txt').write_text(''.join(f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n' for path in images))
+print(f'U14 PASS {checks} keyboard containment and recovery assertions; 8 viewport PNGs with SHA256',flush=True)

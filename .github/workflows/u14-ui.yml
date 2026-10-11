@@ -32,8 +32,22 @@ jobs:
           changed=set(subprocess.check_output(['git','diff','--name-only',parent,'HEAD'],text=True).splitlines())
           allowed={'index.html','u14.js','tests/u14_smoke.py',
                    '.github/workflows/u14-ui.yml','docs/U14_VIEWPORT_A11Y.md'}
-          assert changed<=allowed,changed
-          print('PASS exact U13 base; U14 permitted scope')
+          assert changed==allowed,changed
+          from pathlib import Path
+          original=subprocess.check_output(['git','show',parent+':index.html'],text=True)
+          html=Path('index.html').read_text()
+          assert html.replace('<script defer src="u14.js"></script>\n','')==original
+          assert html.count('src="u14.js"')==1
+          for n in ('u2','u3','u4','u5','u6','u7','u11','u12','u13'):
+              css=f'{n}.css'
+              assert Path(css).read_bytes()==subprocess.check_output(['git','show',f'{parent}:{css}'])
+              if n in ('u2','u3','u4','u5','u6','u7'):
+                  js=f'{n}.js'
+                  assert Path(js).read_bytes()==subprocess.check_output(['git','show',f'{parent}:{js}'])
+          for f in ('docs/evidence/U8_HU7_ACCEPTANCE.template.json',
+                    'scripts/u8_validate_evidence.py','tests/u8_evidence_intake_test.py'):
+              assert Path(f).read_bytes()==subprocess.check_output(['git','show',f'{parent}:{f}'])
+          print('PASS U13 base; U14 exactly five files, one script link, original audio/data/UI frozen')
           PY
       - uses: actions/setup-python@v5
         with:
@@ -53,6 +67,12 @@ jobs:
           python tests/u11_smoke.py
           python tests/u12_smoke.py
           python tests/u13_smoke.py
+      - name: Verify new U14 original viewport screenshots
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find u14-evidence -maxdepth 1 -name 'u14-*.png' | wc -l)" -eq 8
+          (cd u14-evidence && sha256sum --check sha256.txt)
       - name: Verify inherited per-PNG SHA256
         shell: bash
         run: |
@@ -80,6 +100,7 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
           path: |
+            u14-evidence/
             u13-evidence/
             u12-evidence/
             u11-evidence/
