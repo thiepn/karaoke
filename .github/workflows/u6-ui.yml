@@ -1,0 +1,81 @@
+name: ROOMTONE U6 Visual Evidence & Accessibility
+on:
+  push:
+    branches:
+      - feat/u6-after-hours-visual-acceptance
+  pull_request:
+    branches:
+      - feat/u5-after-hours-experience
+permissions:
+  contents: read
+jobs:
+  visual:
+    name: Exact-head U3-U6 Chromium and original evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    steps:
+      - name: Checkout exact event head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify U5 ancestry, exact head, and source-only diff
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+          parent='9e5c71088a8b078c990dce4083c6957be4b300ea'
+          assert subprocess.run(['git','merge-base','--is-ancestor',parent,'HEAD']).returncode==0
+          files=set(subprocess.check_output(['git','diff','--name-only',parent,'HEAD'],text=True).splitlines())
+          allow={'index.html','u6.css','u6.js','tests/u6_smoke.py',
+                 '.github/workflows/u6-ui.yml','docs/U6_VISUAL_ACCEPTANCE.md'}
+          assert files<=allow and {'index.html','u6.js','tests/u6_smoke.py'}<=files,files
+          base=subprocess.check_output(['git','show',parent+':index.html'],text=True)
+          html=Path('index.html').read_text()
+          assert html.replace('  <link rel="stylesheet" href="u6.css">\n','').replace('<script defer src="u6.js"></script>\n','')==base
+          for name in ('u2','u3','u4','u5','u6'):
+              assert html.count('href="'+name+'.css"')==1
+              assert html.count('src="'+name+'.js"')==1
+          print('PASS U5 parent ancestry, original audio content and source-only diff',flush=True)
+          PY
+      - name: Configure Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Chromium and pinned Playwright
+        run: |
+          python -m pip install --disable-pip-version-check playwright==1.55.0
+          python -m playwright install --with-deps chromium
+      - name: Inherited U3 Chromium
+        run: python tests/u3_smoke.py
+      - name: Inherited U4 keyboard and recording UI
+        run: python tests/u4_smoke.py
+      - name: Inherited U5 stage and mobile controls
+        run: python tests/u5_smoke.py
+      - name: U6 filter, keyboard and screenshot tests
+        run: python tests/u6_smoke.py
+      - name: Verify original screenshot SHA256 and counts
+        run: |
+          set -euo pipefail
+          for prefix in u4 u5 u6; do
+            test "$(find "$prefix-evidence" -maxdepth 1 -name "$prefix-*.png" | wc -l)" -eq "$([ "$prefix" = u6 ] && echo 16 || echo $([ "$prefix" = u5 ] && echo 15 || echo 12))"
+            (cd "$prefix-evidence" && sha256sum --check sha256.txt)
+          done
+      - name: Retain original U3-U6 screenshots (not accepted goldens)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: roomtone-u6-original-visual-evidence
+          path: |
+            u6-evidence/
+            u5-evidence/
+            u4-evidence/
+            u3-*.png
+          if-no-files-found: warn
+          retention-days: 30

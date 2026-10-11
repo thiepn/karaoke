@@ -1,0 +1,18 @@
+/* ROOMTONE U6 — screenshot-grounded polish. Respects frozen AFTER HOURS tokens. */
+.rt-u6-filter-empty{
+  margin:12px 0 0;padding:15px 17px;border-left:2px solid #b8a6f5;
+  background:#252333;color:#e0d8f1;font-size:13px;line-height:1.65;
+}
+.rt-u6-filter-empty[hidden]{display:none!important}
+#rtU2SongStatus{color:#c3bdd3;min-height:1.5em}
+.rt-u2-song-row .rt-u2-song-select{min-height:40px;text-wrap:pretty;overflow-wrap:anywhere}
+.rt-u2-song-row .rt-u2-song-number{font-variant-numeric:tabular-nums}
+#rtU5FilteredCount{font-variant-numeric:tabular-nums;white-space:nowrap}
+@media(max-width:680px){
+  .rt-u2-song-row{min-height:58px}
+  #rtU3TrackTools .queue-list{max-height:45dvh}
+  .rt-u6-filter-empty{font-size:12px;padding:13px 14px}
+}
+@media(prefers-reduced-motion:reduce){
+  .rt-u6-filter-empty{transition:none!important}
+}
