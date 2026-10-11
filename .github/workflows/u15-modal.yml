@@ -33,7 +33,7 @@ jobs:
           changed=set(subprocess.check_output(['git','diff','--name-only',parent,'HEAD'],text=True).splitlines())
           allowed={'index.html','u15.js','tests/u15_smoke.py',
                    '.github/workflows/u15-modal.yml','docs/U15_MODAL_LIFECYCLE.md'}
-          assert changed<=allowed,changed
+          assert changed==allowed,changed
           if 'index.html' in changed:
             prior=subprocess.check_output(['git','show',parent+':index.html'],text=True)
             current=Path('index.html').read_text(encoding='utf-8')
