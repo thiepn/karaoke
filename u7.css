@@ -1,0 +1,153 @@
+/* ROOMTONE U7 — verified 390px screenshot defect: mobile bottom Queue/Mixer
+   overlayed transport and practice controls. It now occupies its own row
+   before Stage. The original emergency mute remains the highest priority. */
+@media(max-width:680px){
+  .rt-stage-view .rt-u5-mobile-dock.rt-u7-stage-dock{
+    display:flex;
+    position:sticky;
+    top:var(--rt-u7-sticky-top,126px);
+    left:auto;
+    right:auto;
+    bottom:auto;
+    z-index:45;
+    width:100%;
+    min-height:55px;
+    margin:0 0 11px;
+    padding:5px;
+    border:1px solid #49445c;
+    background:#1d1d2b;
+    box-shadow:0 4px 12px #0007;
+  }
+  .rt-stage-view .rt-u7-stage-dock button{
+    flex:1 1 0;
+    min-height:44px;
+    font-size:12px;
+    padding:8px 12px;
+    border-color:#5b536d;
+    justify-content:space-between;
+  }
+  .rt-stage-layout{min-width:0}
+  .rt-stage-view .rt-view-title{margin-bottom:11px}
+  .rt-mobile-mute{
+    right:max(12px,env(safe-area-inset-right,0px));
+    bottom:max(12px,env(safe-area-inset-bottom,0px));
+    min-height:52px;
+    z-index:96;
+  }
+  .rt-stage-view .stage{scroll-margin-top:190px}
+  .rt-stage-view :is(.stage-controls,.stage-timeline,.loop-bar,.performance-bar){
+    scroll-margin-bottom:calc(68px + env(safe-area-inset-bottom,0px));
+  }
+}
+@media(max-width:350px){
+  .rt-stage-view .rt-u7-stage-dock button{font-size:11px;padding:7px}
+}
+@media(prefers-reduced-motion:reduce){
+  .rt-stage-view .rt-u7-stage-dock{transition:none!important}
+}
+
+/* Second screenshot correction: the fixed mute obscured "Next" at 390px.
+   Put the SAME button in the sticky workspace navigation, and in focus
+   relocate it inside the fullscreen Stage. Its handler is unchanged. */
+@media(max-width:680px){
+  .rt-header .rt-navigation{
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr)) minmax(76px,86px);
+    gap:3px;
+    align-items:stretch;
+    width:100%;
+  }
+  .rt-header .rt-navigation .rt-nav-button{
+    width:100%;
+    flex:none;
+    min-width:0;
+    min-height:44px;
+    font-size:clamp(10px,2.8vw,12px);
+    padding:7px 2px;
+  }
+  .rt-header .rt-navigation>.rt-mobile-mute{
+    display:inline-flex;
+    position:static;
+    inset:auto;
+    margin:0;
+    width:100%;
+    min-width:0;
+    min-height:44px;
+    height:auto;
+    align-items:center;
+    justify-content:center;
+    border-radius:3px;
+    padding:7px 3px;
+    font-size:11px;
+    font-weight:800;
+    letter-spacing:.015em;
+    box-shadow:none;
+    background:#5c2937;
+    color:#ffe1e5;
+    border:1px solid #ca7787;
+    white-space:nowrap;
+  }
+  body.in-focus .stage.focus-mode>.rt-mobile-mute{
+    display:inline-flex;
+    position:fixed;
+    inset:auto 12px auto auto;
+    top:12px;
+    width:100px;
+    min-height:44px;
+    align-items:center;
+    justify-content:center;
+    z-index:2600;
+    font-size:12px;
+    background:#5c2937;
+    color:#ffe1e5;
+    border:1px solid #ca7787;
+    box-shadow:0 3px 9px #0009;
+  }
+  body.in-focus .stage.focus-mode>.rt-u5-stage-meta{padding-right:112px}
+  .rt-header .rt-navigation>.rt-mobile-mute:focus-visible,
+  body.in-focus .stage.focus-mode>.rt-mobile-mute:focus-visible{
+    outline:3px solid #f4d1df!important;
+    outline-offset:2px!important;
+  }
+}
+@media(max-width:355px){
+  .rt-header .rt-navigation{grid-template-columns:repeat(4,minmax(0,1fr)) 70px;gap:2px}
+  .rt-header .rt-navigation .rt-nav-button{font-size:10px}
+  .rt-header .rt-navigation>.rt-mobile-mute{font-size:10px}
+}
+
+/* Screenshot remediation #3: large empty-LRC placeholder collided with the
+   absolute lyric cue / baseline inside fullscreen focus at 390 and 1440px.
+   Do not reduce the active synchronized lyric typography. */
+.stage.focus-mode .lyrics-screen{
+  min-height:clamp(290px,40dvh,470px);
+  padding-top:60px;
+  padding-bottom:65px;
+  gap:12px;
+}
+.stage.focus-mode .lyric-current.placeholder{
+  font-size:clamp(23px,3.15vw,46px);
+  line-height:1.22;
+  max-width:min(760px,88%);
+  text-wrap:balance;
+  overflow-wrap:break-word;
+  min-height:0;
+}
+.stage.focus-mode .rt-u5-cue{
+  bottom:18px;
+  right:4px;
+  font-size:10px;
+  max-width:90%;
+  text-align:right;
+}
+@media(max-width:680px){
+  .stage.focus-mode .lyrics-screen{
+    min-height:clamp(280px,40dvh,390px);
+    padding:52px 6px 62px;
+  }
+  .stage.focus-mode .lyric-current.placeholder{
+    font-size:clamp(22px,6.2vw,30px);
+    line-height:1.25;
+    max-width:95%;
+  }
+}
