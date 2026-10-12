@@ -124,8 +124,9 @@ with sync_playwright() as pw:
                 page.evaluate("history.forward()")
                 page.wait_for_function("location.hash==='#u20-history-probe'")
                 opened()
-                page.evaluate("history.replaceState({},'',location.pathname+location.search)")
-                ok(state()["hash"]=="","same-document history probe cleaned",width)
+                page.evaluate("history.replaceState({},'','#u20-reset')")
+                ok(state()["hash"]=="#u20-reset",
+                   "same-document history state replaced using valid hash",width)
 
                 # Browser page visibility: activate another real Chromium tab;
                 # distinguish actual hidden state from synthetic event dispatch.
