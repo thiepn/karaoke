@@ -5,7 +5,7 @@ int main(){
 #ifdef _WIN32
  try{
   roomtone::desktop::Window window;
-  unsigned snapshots=0,playEvents=0,muteEvents=0,seekEvents=0,lastSeek=0;
+  unsigned snapshots=0,playEvents=0,muteEvents=0,seekEvents=0,lastSeek=0,topologyEvents=0,tickEvents=0,previousEvents=0;
   window.syntheticTest=true;
   window.controller.snapshot=[&]{
    ++snapshots;
@@ -13,14 +13,17 @@ int main(){
    state.title=L"TEST -- OFFLINE";
    state.current=L"First line";
    state.next=L"Second line";
-   state.hasSong=true;state.deviceActive=true;state.durationSeconds=120;
+   state.hasSong=true;state.hasLyrics=true;state.deviceActive=true;state.durationSeconds=120;
    return state;
   };
   window.controller.action=[&](roomtone::desktop::Action action){
    if(action==roomtone::desktop::Play)++playEvents;
    if(action==roomtone::desktop::EmergencyMute)++muteEvents;
+   if(action==roomtone::desktop::PreviousLine)++previousEvents;
   };
   window.controller.seekSeconds=[&](unsigned sec){++seekEvents;lastSeek=sec;};
+  window.controller.deviceChanged=[&]{++topologyEvents;};
+  window.controller.maintenance=[&]{++tickEvents;};
   // The nested modal chooser must NEVER post WM_QUIT for the entire app.
   {
    roomtone::desktop::DeviceChooser picker;
@@ -32,7 +35,7 @@ int main(){
     throw std::runtime_error("Modal chooser incorrectly quit app's message loop");
   }
   const int result=window.run();
-  if(result!=0||snapshots==0||playEvents!=1||muteEvents!=1||seekEvents!=1||lastSeek!=43)
+  if(result!=0||snapshots==0||playEvents!=1||muteEvents!=1||previousEvents!=1||topologyEvents<1||tickEvents==0||seekEvents!=1||lastSeek!=43)
    throw std::runtime_error("in-process control/seek message, modal lifetime and focus");
   if(roomtone::desktop::wide("Nacht \xC3\xBC""ber")!=L"Nacht \xFC""ber")
    throw std::runtime_error("UTF-8 lyric display decoding");

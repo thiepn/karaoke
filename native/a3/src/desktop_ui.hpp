@@ -5,6 +5,7 @@
 #endif
 #include <windows.h>
 #include <commctrl.h>
+#include <dbt.h>
 #include <algorithm>
 #include <functional>
 #include <string>
@@ -29,18 +30,21 @@ inline std::wstring wide(const std::string& value) {
 enum Action {
  Play=101,Mic,Back,Forward,Restart,Repeat,NextLine,
  ReverbDown,ReverbUp,EchoDown,EchoUp,MusicDown,MusicUp,
- ChooseSong,ChooseSession,ChooseDevices,Reconnect,EmergencyMute,GainDown,GainUp
+ ChooseSong,ChooseSession,ChooseDevices,Reconnect,EmergencyMute,GainDown,GainUp,
+  PreviousLine
 };
 struct Snapshot {
  std::wstring title,previous,current,next,input,output,notice;
  unsigned positionSeconds=0,durationSeconds=0;
  float reverb=0,echo=0,music=0,gain=0;
- bool playing=false,microphone=false,repeat=false,interrupted=false,deviceActive=false,hasSong=false;
+ bool playing=false,microphone=false,repeat=false,interrupted=false,deviceActive=false,hasSong=false,hasLyrics=false;
 };
 struct Controller {
  std::function<Snapshot()> snapshot;
  std::function<void(Action)> action;
  std::function<void(unsigned)> seekSeconds; // only on owner UI thread
+  std::function<void()> maintenance; // timer drains driver events on owner thread
+  std::function<void()> deviceChanged; // Windows device notification signals topology change
 };
 inline HFONT font(int size,bool bold=false) {
  return CreateFontW(-size,0,0,0,bold?FW_SEMIBOLD:FW_NORMAL,FALSE,FALSE,FALSE,
@@ -64,7 +68,7 @@ struct Window {
  Controller controller;
  HWND hwnd=nullptr,title=nullptr,previous=nullptr,current=nullptr,next=nullptr,
       status=nullptr,device=nullptr,notice=nullptr,seekLabel=nullptr,seekBar=nullptr;
- HWND buttons[20]{};
+ HWND buttons[21]{};
  HFONT minorFont=nullptr,regular=nullptr,large=nullptr,heading=nullptr;
  bool ready=false;
  bool syntheticTest=false;
@@ -97,9 +101,10 @@ struct Window {
    const int x=pad+(i%columns)*(bw+gap),y=355+(i/columns)*48;
    MoveWindow(buttons[i],x,y,bw,40,TRUE);
   }
-  MoveWindow(buttons[16],pad,550,w-2*pad,40,TRUE);
-  MoveWindow(buttons[17],pad,597,w-2*pad,44,TRUE);
   const int half=(w-2*pad-gap)/2;
+  MoveWindow(buttons[16],pad,550,half,40,TRUE);
+  MoveWindow(buttons[20],pad+half+gap,550,half,40,TRUE);
+  MoveWindow(buttons[17],pad,597,w-2*pad,44,TRUE);
   MoveWindow(buttons[18],pad,648,half,40,TRUE);
   MoveWindow(buttons[19],pad+half+gap,648,half,40,TRUE);
   MoveWindow(device,pad,699,w-2*pad,38,TRUE);
@@ -117,7 +122,7 @@ struct Window {
    SendMessageW(seekBar,TBM_SETRANGEMAX,FALSE,limit);
    if(!trackingSeek)
     SendMessageW(seekBar,TBM_SETPOS,TRUE,std::min<unsigned>(s.positionSeconds,limit));
-   EnableWindow(seekBar,s.hasSong&&s.deviceActive&&!s.interrupted);
+   EnableWindow(seekBar,s.hasSong); // owner queues offline seeks across reconnect
   }
   auto state=s.interrupted?L"INTERRUPTED":s.deviceActive?L"READY":L"DEVICE STOPPED";
   setText(status,clock(s.positionSeconds)+L" / "+clock(s.durationSeconds)
@@ -138,7 +143,9 @@ struct Window {
   setText(notice,s.notice.empty()?L"Local WASAPI | No network | Buffer size is NOT measured mic-to-speaker latency":s.notice);
   EnableWindow(buttons[0],s.hasSong&&s.deviceActive&&!s.interrupted);
   EnableWindow(buttons[1],s.deviceActive&&!s.interrupted);
-  for(int i:{2,3,4,5,6})EnableWindow(buttons[i],s.hasSong&&s.deviceActive&&!s.interrupted);
+  for(int i:{2,3,4,5})EnableWindow(buttons[i],s.hasSong);
+   EnableWindow(buttons[6],s.hasSong&&s.hasLyrics);
+   EnableWindow(buttons[20],s.hasSong&&s.hasLyrics);
  }
  void notify(Action action){
   if(controller.action)controller.action(action);
@@ -169,14 +176,15 @@ struct Window {
     const std::pair<Action,const wchar_t*> labels[]={
      {Play,L"Play / Pause"},{Mic,L"Enable voice"},{Back,L"-10 seconds"},
      {Forward,L"+10 seconds"},{Restart,L"Start song"},{Repeat,L"Repeat OFF"},
-     {NextLine,L"Next lyric"},{ReverbDown,L"Reverb -"},{ReverbUp,L"Reverb +"},
+     {NextLine,L"Next lyric (Ctrl+Right)"},{ReverbDown,L"Reverb -"},{ReverbUp,L"Reverb +"},
      {EchoDown,L"Echo -"},{EchoUp,L"Echo +"},{MusicDown,L"Music -"},
      {MusicUp,L"Music +"},{ChooseSong,L"Change song"},{ChooseSession,L"Import .rtk"},
      {ChooseDevices,L"Select devices"},{Reconnect,L"Reconnect (muted)"},
      {EmergencyMute,L"MUTE VOICE NOW (F8)"},
-     {GainDown,L"Vocal gain -"},{GainUp,L"Vocal gain +"}
+     {GainDown,L"Vocal gain -"},{GainUp,L"Vocal gain +"},
+      {PreviousLine,L"Previous lyric (Ctrl+Left)"}
     };
-    for(int i=0;i<20;++i)self->buttons[i]=self->button(labels[i].first,labels[i].second);
+    for(int i=0;i<21;++i)self->buttons[i]=self->button(labels[i].first,labels[i].second);
     self->device=self->label(L"Devices: Windows defaults",SS_LEFT,self->minorFont);
     self->notice=self->label(L"No physical latency measurements available",SS_LEFT,self->minorFont);
     self->layout();
@@ -185,6 +193,9 @@ struct Window {
     if(self->syntheticTest){
         SendMessageW(self->seekBar,TBM_SETPOS,TRUE,43);
         PostMessageW(h,WM_HSCROLL,MAKEWPARAM(TB_ENDTRACK,0),reinterpret_cast<LPARAM>(self->seekBar));
+        PostMessageW(h,WM_DEVICECHANGE,DBT_DEVNODES_CHANGED,0);
+        PostMessageW(h,WM_TIMER,1,0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::PreviousLine,BN_CLICKED),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::Play,BN_CLICKED),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::EmergencyMute,BN_CLICKED),0);
         PostMessageW(h,WM_CLOSE,0,0);
@@ -212,7 +223,14 @@ struct Window {
      return 0;
     }
     break;
-   case WM_TIMER:if(w==1)self->render();return 0;
+   case WM_TIMER:
+     if(w==1){if(self->controller.maintenance)self->controller.maintenance();self->render();}
+     return 0;
+    case WM_DEVICECHANGE:
+     if(w==DBT_DEVNODES_CHANGED||w==DBT_DEVICEARRIVAL||w==DBT_DEVICEREMOVECOMPLETE){
+      if(self->controller.deviceChanged)self->controller.deviceChanged();
+     }
+     return DefWindowProcW(h,message,w,l);
    case WM_KEYDOWN:
     // Local to the focused karaoke window; never intercept other apps' F keys.
     if(w==VK_F8)self->notify(EmergencyMute);
@@ -220,7 +238,7 @@ struct Window {
     else if(w==VK_F10)self->notify(Play);
     return 0;
    case WM_COMMAND:
-    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=120)
+    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=121)
      self->notify(static_cast<Action>(LOWORD(w)));
     return 0;
    case WM_CLOSE:
@@ -253,6 +271,19 @@ struct Window {
     if(m.wParam==VK_F8){notify(EmergencyMute);continue;}
     if(m.wParam==VK_F9){notify(Mic);continue;}
     if(m.wParam==VK_F10){notify(Play);continue;}
+     if(GetKeyState(VK_CONTROL)<0){
+      Action shortcut{};bool recognized=true;
+      switch(m.wParam){
+       case VK_LEFT:shortcut=PreviousLine;break;
+       case VK_RIGHT:shortcut=NextLine;break;
+       case 'O':shortcut=ChooseSong;break;
+       case 'I':shortcut=ChooseSession;break;
+       case 'D':shortcut=ChooseDevices;break;
+       case 'R':shortcut=Reconnect;break;
+       default:recognized=false;break;
+      }
+      if(recognized){notify(shortcut);continue;}
+     }
    }
    if(!IsDialogMessageW(hwnd,&m)){TranslateMessage(&m);DispatchMessageW(&m);}
   }
