@@ -28,4 +28,22 @@ with tempfile.TemporaryDirectory() as td:
  invalid=subprocess.run([str(exe),"--probe-song"],
     capture_output=True,text=True,timeout=20)
  assert invalid.returncode!=0,"Song not required for probe"
-print("PASS Windows native WAV decode, frame count, nonexistent and absent file rejection. Physical audio NOT TESTED.")
+# An offline session carries only audio identity, lyric times and loop state.
+with tempfile.TemporaryDirectory() as td:
+ session=Path(td)/"karaoke.rtk"
+ session.write_text("ROOMTONE_HANDOFF_V1\n"
+ "audio\tkaraoke.wav\n"
+ "title\tPractice%20Set\n"
+ "start-ms\t1250\n"
+ "offset-ms\t-200\n"
+ "loop\t1\nloop-start-ms\t1000\nloop-end-ms\t3000\n"
+ "lyric\t1250\tFirst%20line\n",encoding="utf-8")
+ ok=subprocess.run([str(exe),"--probe-handoff","--handoff",str(session)],
+   capture_output=True,text=True,timeout=20)
+ assert ok.returncode==0,(ok.returncode,ok.stdout,ok.stderr)
+ assert "OFFLINE_SESSION_OK audio=karaoke.wav lyrics=1 start-ms=1250" in ok.stdout,ok.stdout
+ session.write_text("../../../private",encoding="utf-8")
+ bad=subprocess.run([str(exe),"--probe-handoff","--handoff",str(session)],
+   capture_output=True,text=True,timeout=20)
+ assert bad.returncode!=0,"Invalid handoff erroneously accepted"
+print("PASS Windows native WAV decoder, offline .rtk handoff validation, rejection of invalid data. Physical audio NOT TESTED.")

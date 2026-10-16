@@ -34,6 +34,8 @@ jobs:
           python -m playwright install --with-deps chromium
       - name: Execute A1 synthetic real-browser routing checks
         run: python tests/audio_route_smoke.py
+      - name: Test browser native-handoff export and playback exclusion
+        run: python tests/native_handoff_smoke.py
   native:
     name: ${{ matrix.os }} native build and DSP
     strategy:
