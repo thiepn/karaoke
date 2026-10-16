@@ -7,6 +7,7 @@
 #include "transport.hpp"
 #include "handoff.hpp"
 #include "desktop_ui.hpp"
+#include "device_recovery.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <sstream>
@@ -340,12 +341,17 @@ int main(int argc,char** argv) {
             printDevices("Playback",outputs,outCount);
             ma_context_uninit(&context);return 0;
         }
+        // Snapshot the chooser labels before any modal user interaction.
+        // Enumerated miniaudio device pointers may become stale after USB changes.
+        std::vector<std::string> initialInputs,initialOutputs;
+        for(ma_uint32 i=0;i<inCount;++i)initialInputs.emplace_back(inputs[i].name);
+        for(ma_uint32 i=0;i<outCount;++i)initialOutputs.emplace_back(outputs[i].name);
         if(opt.guided){
             try{
                 if(opt.gui){
                     std::vector<std::wstring> microphones,speakers;
-                    for(ma_uint32 i=0;i<inCount;++i)microphones.push_back(roomtone::desktop::wide(inputs[i].name));
-                    for(ma_uint32 i=0;i<outCount;++i)speakers.push_back(roomtone::desktop::wide(outputs[i].name));
+                    for(const auto& name:initialInputs)microphones.push_back(roomtone::desktop::wide(name));
+                    for(const auto& name:initialOutputs)speakers.push_back(roomtone::desktop::wide(name));
                     const auto choice=roomtone::desktop::selectDevices(microphones,speakers);
                     if(!choice){ma_context_uninit(&context);return 0;}
                     opt.input=choice->first;opt.output=choice->second;
@@ -355,16 +361,17 @@ int main(int argc,char** argv) {
                 }
             }catch(...){ma_context_uninit(&context);throw;}
         }
-        if(opt.input>=static_cast<int>(inCount)||opt.output>=static_cast<int>(outCount)){
-            std::cerr<<"Invalid device index. Run --list first.\n";
+        std::string inputName,outputName;
+        if(!roomtone::device_policy::selectedName(opt.input,initialInputs,inputName)||
+           !roomtone::device_policy::selectedName(opt.output,initialOutputs,outputName)){
+            std::cerr<<"Device selection is missing, stale or ambiguous. Select a unique named device or Windows default.\n";
             ma_context_uninit(&context);return 4;
         }
-        if(opt.input>=0)std::cout<<"Input: "<<inputs[opt.input].name<<"\n";
-        if(opt.output>=0)std::cout<<"Output: "<<outputs[opt.output].name<<"\n";
-        // Remember exact names, not volatile enumeration indexes. Reconnection
-        // refuses to silently attach to a different named device.
-        std::string inputName=opt.input>=0?inputs[opt.input].name:"";
-        std::string outputName=opt.output>=0?outputs[opt.output].name:"";
+        if(!inputName.empty())std::cout<<"Input: "<<inputName<<"\n";
+        if(!outputName.empty())std::cout<<"Output: "<<outputName<<"\n";
+        // Only a unique device label is permitted. Label alone is NOT a stable
+        // Windows endpoint identifier; ambiguous/missing endpoints always fail closed.
+        // Selecting Windows default explicitly retains OS-owned device routing.
         std::string selectedSongFile=chosenSong.empty()
              ?std::filesystem::u8path(opt.song).filename().u8string()
              :std::filesystem::path(chosenSong).filename().u8string();
@@ -389,21 +396,17 @@ int main(int argc,char** argv) {
             if(ma_context_get_devices(&context,&newOutputs,&newOutCount,&newInputs,&newInCount)!=MA_SUCCESS){
                 std::cout<<"Cannot enumerate WASAPI devices; reconnect again later.\n";return false;
             }
-            const auto resolve=[](const std::string& name,ma_device_info* devices,ma_uint32 count)->int{
-                if(name.empty())return -1;
-                int match=-2;
-                for(ma_uint32 i=0;i<count;++i)if(name==devices[i].name){
-                    if(match!=-2)return -2; // Duplicate names are ambiguous.
-                    match=static_cast<int>(i);
-                }
-                return match;
-            };
-            const int capture=resolve(inputName,newInputs,newInCount);
-            const int playback=resolve(outputName,newOutputs,newOutCount);
-            if((!inputName.empty()&&capture<0)||(!outputName.empty()&&playback<0)){
-                std::cout<<"Selected device is missing or ambiguous. Reconnect it or restart guided setup.\n";
+            std::vector<std::string> captures,playbacks;
+            for(ma_uint32 i=0;i<newInCount;++i)captures.emplace_back(newInputs[i].name);
+            for(ma_uint32 i=0;i<newOutCount;++i)playbacks.emplace_back(newOutputs[i].name);
+            const auto captured=roomtone::device_policy::resolve(inputName,captures);
+            const auto rendered=roomtone::device_policy::resolve(outputName,playbacks);
+            if((!inputName.empty()&&captured.state!=roomtone::device_policy::State::Unique)||
+               (!outputName.empty()&&rendered.state!=roomtone::device_policy::State::Unique)){
+                std::cout<<"Selected device is missing or ambiguous. Audio remains muted. Reconnect it or select devices again.\n";
                 return false;
             }
+            const int capture=captured.index,playback=rendered.index;
             ma_device_config config=ma_device_config_init(ma_device_type_duplex);
             config.capture.format=ma_format_f32;config.capture.channels=1;
             config.playback.format=ma_format_f32;config.playback.channels=2;
@@ -437,6 +440,10 @@ int main(int argc,char** argv) {
             auto safeStop=[&](){
                 rt.monitoring.store(false);rt.musicPlaying.store(false);
                 if(deviceActive){ma_device_uninit(&device);deviceActive=false;}
+                // Callback has stopped. Freeze the latest owner-requested transport
+                // (including an unconsumed seek/restart), not stale UI position.
+                roomtone::recovery::freeze(
+                    rt.seekRequest,rt.rewindRequest,rt.songPosition,rt.mixer.songFrames());
             };
             auto safeRestart=[&](){
                 rt.mixer.vocal.reset();
@@ -455,7 +462,9 @@ int main(int argc,char** argv) {
                 view.reverb=rt.wet.load();view.echo=rt.echo.load();view.music=rt.musicGain.load();view.gain=rt.gain.load();
                 view.input=inputName.empty()?L"Windows default":roomtone::desktop::wide(inputName);
                 view.output=outputName.empty()?L"Windows default":roomtone::desktop::wide(outputName);
-                view.notice=notice;
+                view.notice=rt.interrupted.load()
+                    ?L"Audio interrupted. Reconnect manually (voice and song stay muted)."
+                    :notice;
                 if(hasHandoff&&!rt.session.lines.empty()){
                     const auto ms=static_cast<std::uint32_t>(
                         std::min<std::uint64_t>(rt.songPosition.load()/48,720000));
@@ -471,6 +480,16 @@ int main(int argc,char** argv) {
                     }
                 }else view.current=L"Import a matching .rtk for synchronized lyrics";
                 return view;
+            };
+            window.controller.seekSeconds=[&](unsigned seconds){
+                if(!deviceActive||rt.interrupted.load()||!rt.mixer.hasSong()){
+                    notice=L"Cannot seek: device unavailable or no local song.";return;
+                }
+                const auto at=std::min<std::uint64_t>(
+                    static_cast<std::uint64_t>(seconds)*48000ULL,rt.mixer.songFrames());
+                rt.rewindRequest.store(false);
+                rt.seekRequest.store(at);
+                notice=L"Song seek requested. Native music remains under this WASAPI engine.";
             };
             window.controller.action=[&](Action action){
                 try{
@@ -574,15 +593,28 @@ int main(int argc,char** argv) {
                         ma_uint32 no=0,ni=0;
                         if(ma_context_get_devices(&context,&outs,&no,&ins,&ni)!=MA_SUCCESS)
                             throw std::runtime_error("Cannot enumerate devices");
+                        // Copy labels before modal loop, never keep raw enumeration
+                        // pointers across owner interaction or possible hotplug.
+                        std::vector<std::string> candidateInputs,candidateOutputs;
+                        for(ma_uint32 i=0;i<ni;++i)candidateInputs.emplace_back(ins[i].name);
+                        for(ma_uint32 i=0;i<no;++i)candidateOutputs.emplace_back(outs[i].name);
                         std::vector<std::wstring> inputLabels,outputLabels;
-                        for(ma_uint32 i=0;i<ni;++i)inputLabels.push_back(roomtone::desktop::wide(ins[i].name));
-                        for(ma_uint32 i=0;i<no;++i)outputLabels.push_back(roomtone::desktop::wide(outs[i].name));
-                        const auto choice=roomtone::desktop::selectDevices(inputLabels,outputLabels);
+                        for(const auto& name:candidateInputs)inputLabels.push_back(roomtone::desktop::wide(name));
+                        for(const auto& name:candidateOutputs)outputLabels.push_back(roomtone::desktop::wide(name));
+                        const auto choice=roomtone::desktop::selectDevices(inputLabels,outputLabels,window.hwnd);
                         if(choice){
-                            inputName=choice->first<0?"":ins[choice->first].name;
-                            outputName=choice->second<0?"":outs[choice->second].name;
+                            std::string nextInput=inputName,nextOutput=outputName;
+                            if(!roomtone::device_policy::selectedName(choice->first,candidateInputs,nextInput)||
+                               !roomtone::device_policy::selectedName(choice->second,candidateOutputs,nextOutput)){
+                                notice=L"Device changed while selecting or name is ambiguous. Previous choice retained; voice muted.";
+                                safeRestart();break;
+                            }
+                            inputName=std::move(nextInput);
+                            outputName=std::move(nextOutput);
                         }
-                        safeRestart();break;
+                        safeRestart();
+                        if(!choice)notice=L"Device chooser canceled; previous selection restored, both outputs muted.";
+                        break;
                     }
                     }
                 }catch(const std::exception& e){
@@ -636,6 +668,8 @@ int main(int argc,char** argv) {
                 }else if(op=="reconnect"){
                     rt.monitoring.store(false);rt.musicPlaying.store(false);
                     if(deviceActive){ma_device_uninit(&device);deviceActive=false;}
+                    roomtone::recovery::freeze(
+                        rt.seekRequest,rt.rewindRequest,rt.songPosition,rt.mixer.songFrames());
                     // Callback is fully stopped; clear stale reflections.
                     rt.mixer.vocal.reset();
                     if(startDevice())std::cout<<"Reconnected MUTED + PAUSED; song position preserved.\n";
