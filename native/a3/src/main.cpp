@@ -292,6 +292,16 @@ int main(int argc,char** argv) {
                     hasHandoff=true;
                 }
             }
+        }
+        if(hasHandoff){
+            if(opt.song.empty()&&chosenSong.empty())
+                throw std::invalid_argument("ROOMTONE session requires original local audio file");
+            const std::string filename=chosenSong.empty()
+              ?std::filesystem::u8path(opt.song).filename().u8string()
+              :std::filesystem::path(chosenSong).filename().u8string();
+            if(filename!=imported.audioName)
+                throw std::invalid_argument("Selected local instrumental filename does not match original ROOMTONE session");
+        }
         // Decode before WASAPI; .rtk never contains audio bytes or disk path.
         auto song=opt.list?std::vector<float>{}:loadSong(opt.song,chosenSong);
         if(opt.probeSong){
