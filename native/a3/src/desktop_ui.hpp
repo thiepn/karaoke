@@ -56,7 +56,7 @@ struct Window {
  HWND hwnd=nullptr,title=nullptr,previous=nullptr,current=nullptr,next=nullptr,
       status=nullptr,device=nullptr,notice=nullptr;
  HWND buttons[17]{};
- HFONT small=nullptr,regular=nullptr,large=nullptr,heading=nullptr;
+ HFONT minorFont=nullptr,regular=nullptr,large=nullptr,heading=nullptr;
  bool ready=false;
  void applyFont(HWND h,HFONT f){if(h)SendMessageW(h,WM_SETFONT,reinterpret_cast<WPARAM>(f),TRUE);}
  HWND label(const wchar_t* value,DWORD flags,HFONT f) {
@@ -130,12 +130,12 @@ struct Window {
   if(!self)return DefWindowProcW(h,message,w,l);
   switch(message){
    case WM_CREATE:{
-    self->small=font(17);self->regular=font(17);self->large=font(30,true);
+    self->minorFont=font(17);self->regular=font(17);self->large=font(30,true);
     self->heading=font(25,true);
     self->title=self->label(L"ROOMTONE",SS_LEFT,self->heading);
-    self->previous=self->label(L"",SS_CENTER,self->small);
+    self->previous=self->label(L"",SS_CENTER,self->minorFont);
     self->current=self->label(L"",SS_CENTER|SS_CENTERIMAGE,self->large);
-    self->next=self->label(L"",SS_CENTER,self->small);
+    self->next=self->label(L"",SS_CENTER,self->minorFont);
     self->status=self->label(L"Voice MUTED · Music PAUSED",SS_CENTER,self->regular);
     const std::pair<Action,const wchar_t*> labels[]={
      {Play,L"Play / Pause"},{Mic,L"Enable voice"},{Back,L"-10 seconds"},
@@ -146,8 +146,8 @@ struct Window {
      {ChooseDevices,L"Select devices"},{Reconnect,L"Reconnect (muted)"}
     };
     for(int i=0;i<17;++i)self->buttons[i]=self->button(labels[i].first,labels[i].second);
-    self->device=self->label(L"Devices: Windows defaults",SS_LEFT,self->small);
-    self->notice=self->label(L"No physical latency measurements available",SS_LEFT,self->small);
+    self->device=self->label(L"Devices: Windows defaults",SS_LEFT,self->minorFont);
+    self->notice=self->label(L"No physical latency measurements available",SS_LEFT,self->minorFont);
     self->layout();
     SetTimer(h,1,120,nullptr);
     self->ready=true;self->render();
@@ -178,7 +178,7 @@ struct Window {
   WNDCLASSEXW cls{};
   cls.cbSize=sizeof(cls);cls.hInstance=GetModuleHandleW(nullptr);
   cls.lpfnWndProc=&proc;cls.lpszClassName=name;
-  cls.hCursor=LoadCursorW(nullptr,IDC_ARROW);
+  cls.hCursor=LoadCursorW(nullptr,MAKEINTRESOURCEW(32512));
   cls.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);
   RegisterClassExW(&cls);
   hwnd=CreateWindowExW(0,name,L"ROOMTONE | Native Karaoke",
@@ -189,7 +189,7 @@ struct Window {
   while(GetMessageW(&m,nullptr,0,0)>0){
    if(!IsDialogMessageW(hwnd,&m)){TranslateMessage(&m);DispatchMessageW(&m);}
   }
-  DeleteObject(small);DeleteObject(regular);DeleteObject(large);DeleteObject(heading);
+  DeleteObject(minorFont);DeleteObject(regular);DeleteObject(large);DeleteObject(heading);
   return static_cast<int>(m.wParam);
  }
 };
@@ -246,7 +246,7 @@ struct DeviceChooser{
  std::optional<std::pair<int,int>> run(){
   WNDCLASSEXW cls{};cls.cbSize=sizeof(cls);cls.lpfnWndProc=proc;
   cls.hInstance=GetModuleHandleW(nullptr);cls.lpszClassName=L"ROOMTONE Device Selection";
-  cls.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);cls.hCursor=LoadCursorW(nullptr,IDC_ARROW);
+  cls.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);cls.hCursor=LoadCursorW(nullptr,MAKEINTRESOURCEW(32512));
   RegisterClassExW(&cls);
   hwnd=CreateWindowExW(WS_EX_DLGMODALFRAME,cls.lpszClassName,L"ROOMTONE | Audio devices",
       WS_CAPTION|WS_SYSMENU|WS_VISIBLE,CW_USEDEFAULT,CW_USEDEFAULT,520,290,
