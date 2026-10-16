@@ -1,0 +1,5 @@
+.rt-native-handoff{margin-top:16px;border-left:3px solid var(--accent,#c7c09e)}
+.rt-handoff-actions{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0}
+.rt-handoff-actions .btn{min-height:40px}
+.rt-native-handoff [role="status"]{min-height:1.5em;line-height:1.5}
+@media(max-width:520px){.rt-handoff-actions{display:grid;grid-template-columns:1fr}.rt-handoff-actions .btn{width:100%}}
