@@ -433,8 +433,8 @@ int main(int argc,char** argv) {
             const int capture=captured.index,playback=rendered.index;
             const auto currentInput=capture>=0?endpointId(newInputs[capture]):std::string{};
             const auto currentOutput=playback>=0?endpointId(newOutputs[playback]):std::string{};
-            if((capture>=0&&(currentInput.empty()||(!pinnedInputId.empty()&&currentInput!=pinnedInputId)))||
-               (playback>=0&&(currentOutput.empty()||(!pinnedOutputId.empty()&&currentOutput!=pinnedOutputId)))){
+            if((capture>=0&&!roomtone::device_policy::acceptsEndpointId(pinnedInputId,currentInput))||
+               (playback>=0&&!roomtone::device_policy::acceptsEndpointId(pinnedOutputId,currentOutput))){
                 lastDeviceIssue=L"WASAPI endpoint identity changed or unavailable. Select devices again to authorize this endpoint.";
                 std::cout<<"Endpoint identity mismatch; cannot silently use a same-name replacement.\n";
                 return false;
@@ -530,8 +530,10 @@ int main(int argc,char** argv) {
                     capture.state==roomtone::device_policy::State::Ambiguous||
                     playback.state==roomtone::device_policy::State::Missing||
                     playback.state==roomtone::device_policy::State::Ambiguous||
-                    (capture.index>=0&&!pinnedInputId.empty()&&endpointId(ins[capture.index])!=pinnedInputId)||
-                    (playback.index>=0&&!pinnedOutputId.empty()&&endpointId(outs[playback.index])!=pinnedOutputId));
+                    (capture.index>=0&&!pinnedInputId.empty()&&
+                     !roomtone::device_policy::acceptsEndpointId(pinnedInputId,endpointId(ins[capture.index])))||
+                    (playback.index>=0&&!pinnedOutputId.empty()&&
+                     !roomtone::device_policy::acceptsEndpointId(pinnedOutputId,endpointId(outs[playback.index]))));
                 if(missing){
                     rt.monitoring.store(false);rt.musicPlaying.store(false);
                     if(deviceActive){rt.interrupted.store(true);safeStop();}

@@ -24,3 +24,11 @@ Native GUI physical checks: initial song and device dialogs; current/next lyrics
 - Test USB and AUX on Pebble V3 with wired headphones first, very low volume and cardioid QuadCast aimed away from the speaker. Physical microphone mute or speaker power-off remains mandatory for acoustic feedback.
 
 All physical recovery, measured latency and acoustic safety gates remain **NOT TESTED**. Release NO GO.
+## A3 additional owner verification required (NOT TESTED)
+
+- Disconnect and reconnect the selected QuadCast/Pebble. Confirm the UI explicitly requires Reconnect and does not automatically resume audio or the microphone; the song/lyrics position should survive.
+- Replace the selected input/output with a different Windows endpoint using the same display name, or observe an endpoint ID reallocation. Verify that reconnect refuses it until manually choosing devices again. This is OS endpoint identity, not physical device serial-number validation.
+- While offline, seek with slider/10-second controls and previous/next lyric controls, then reconnect. Verify pending seek, restart, lyric-offset, repeat and effect state without any automatic playback.
+- Confirm owner-thread cleanup on real USB removal and rapid hotplug while the native UI and modal picker are open. The current CI cannot simulate actual device driver callbacks or real hardware.
+
+No QuadCast/Pebble latency or acoustic feedback measurements are claimed. Real device hot-unplug and hardware identity acceptance are **NOT TESTED**.

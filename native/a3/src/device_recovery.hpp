@@ -20,6 +20,11 @@ inline Match resolve(const std::string& name,const std::vector<std::string>& ava
 }
 // Explicit owner device identity; reject same-name hardware rather than silently
 // routing voice or music to an arbitrary replacement on reconnect.
+// Never use a new same-name WASAPI endpoint without explicit owner selection.
+// Tokens are private, ephemeral bytes of the WASAPI endpoint ID, not persisted.
+inline bool acceptsEndpointId(const std::string& pinned,const std::string& observed){
+ return !observed.empty()&&(pinned.empty()||pinned==observed);
+}
 struct Selection {
  std::string inputName,outputName;
  bool inputDefault=true,outputDefault=true;

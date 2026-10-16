@@ -29,6 +29,12 @@ int main(){
  need(selectedName(1,now,chosen)&&chosen=="USB QuadCast","unique user choice");
  need(resolve(chosen,{"USB QuadCast"}).index==0,"permuted index resolved from name");
  need(resolve(chosen,{"Another speaker"}).state==State::Missing,"no fallback to unrelated device");
+ need(acceptsEndpointId("","wasapi:device-a"),"initial explicit selection pins fresh endpoint");
+ need(acceptsEndpointId("wasapi:device-a","wasapi:device-a"),"original endpoint reconnect accepted");
+ need(!acceptsEndpointId("wasapi:device-a","wasapi:device-b"),"same-name replacement endpoint refused");
+ need(!acceptsEndpointId("wasapi:device-a",""),"missing endpoint token refused");
+ need(!acceptsEndpointId("",""),"unidentified explicit endpoint refused");
+ need(!acceptsEndpointId(std::string("a\0b",3),std::string("a\0c",3)),"binary endpoint identity exact");
  need(!selectedName(2,now,chosen)&&chosen=="USB QuadCast","stale selection rejected");
  using namespace roomtone::recovery;
  std::atomic<std::uint64_t> seek{NoSeek},position{10000};
