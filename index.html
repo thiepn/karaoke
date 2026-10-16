@@ -1203,7 +1203,10 @@ async function ensureEngine(){
     musicGain.connect(playbackMix);
     musicGain.connect(recordMusicGain);
     recordMusicGain.connect(recordMusicDelay);recordMusicDelay.connect(recordMix);
-    // The fallback is ready but paused unless explicit-device playback needs it.
+    // Disable the markup autoplay: assigning a MediaStream srcObject can
+    // otherwise start the silent compatibility element behind our route gate.
+    ui.voicePlayback.autoplay=false;
+    ui.voicePlayback.pause();
     ui.voicePlayback.srcObject=compatOut.stream;
     ctx=ac;
     engine={musicSource,musicGain,recordMusicGain,recordMusicDelay,recordDest,recordMix,playbackMix,
