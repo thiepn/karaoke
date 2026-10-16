@@ -1,0 +1,11 @@
+.rt-ao-guide{display:grid;gap:16px;margin:18px 0;padding:20px;background:var(--panel);border:1px solid var(--line)}
+.rt-ao-guide h2{font-size:clamp(19px,2.5vw,25px);margin:6px 0}
+.rt-ao-help,.rt-ao-guide #rtAoDevice{font-size:13px;color:var(--muted)}
+.rt-ao-actions{display:flex;flex-wrap:wrap;gap:9px}.rt-ao-actions .btn{min-height:40px}
+.rt-ao-checks{display:grid;gap:12px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:14px 0}
+.rt-ao-checks label{display:flex;gap:8px;align-items:start;font-size:14px}
+.rt-ao-checks input{margin-top:5px;flex:0 0 auto}
+.rt-ao-select{display:grid;gap:7px;font-size:13px}
+.rt-ao-select select{max-width:480px;padding:10px;background:var(--panel2);color:var(--ink);border:1px solid var(--line)}
+#rtAoStatus{font-size:13px;min-height:24px;color:var(--accent)}
+@media(max-width:480px){.rt-ao-guide{padding:14px}.rt-ao-actions .btn{flex:1 1 150px}}
