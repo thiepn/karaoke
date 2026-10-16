@@ -32,6 +32,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
           test -f native/a3/src/main.cpp
           test -f native/a3/src/vocal_dsp.hpp
+          test -f native/a3/src/karaoke_mix.hpp
           test -f native/a3/tests/dsp_tests.cpp
           python - <<'PY'
           from pathlib import Path
