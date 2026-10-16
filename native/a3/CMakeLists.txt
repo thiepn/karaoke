@@ -6,6 +6,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 enable_testing()
 add_executable(roomtone_a3_dsp_tests tests/dsp_tests.cpp)
 add_test(NAME native_dsp_safety COMMAND roomtone_a3_dsp_tests)
+add_executable(roomtone_a3_handoff_tests tests/handoff_tests.cpp)
+add_test(NAME native_offline_session_handoff COMMAND roomtone_a3_handoff_tests)
 
 # Windows-only experimental executable; existing browser code remains unchanged.
 if(WIN32)
