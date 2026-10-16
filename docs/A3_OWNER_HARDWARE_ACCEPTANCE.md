@@ -12,3 +12,15 @@ Remaining release blockers: physical hardware acceptance; native GUI UX validati
 
 
 Native GUI physical checks: initial song and device dialogs; current/next lyrics under genuine playback; F8 mute-only; F9 confirmation; F10 music control; source-matched offline .rtk reload; no auto unmute after device recovery; same one WASAPI callback; visual accessibility. This has not been physically tested on QuadCast/Pebble V3.
+
+
+## A3 recovery and slider acceptance — owner only / NOT TESTED
+
+- Focus the native Song position slider by Tab. Check mouse drag/release, arrow keys, Page Up/Down and Home/End, and verify imported timed lyrics follow the selected position. Seeking must never enable microphone monitoring automatically.
+- Open Select devices, cancel, and confirm the karaoke window remains running with the previously focused control usable. Test multiple input/output list changes while the chooser is open.
+- Disconnect the chosen QuadCast/Pebble device. An interrupted state must visibly block F9 microphone monitoring, mute all native playback and require explicit reconnect; never silently substitute another device.
+- Test missing/duplicate device names and explicit Windows-default selections. Different physical endpoints that share a unique display name remain an unsupported identity guarantee; collect real endpoint/driver evidence.
+- While a local song is paused or playing, queue a seek/restart, then force a device interruption and reconnect. Verify the intended position survives while music and microphone remain PAUSED/MUTED. If recovery fails, record error message and whether the original device was available.
+- Test USB and AUX on Pebble V3 with wired headphones first, very low volume and cardioid QuadCast aimed away from the speaker. Physical microphone mute or speaker power-off remains mandatory for acoustic feedback.
+
+All physical recovery, measured latency and acoustic safety gates remain **NOT TESTED**. Release NO GO.

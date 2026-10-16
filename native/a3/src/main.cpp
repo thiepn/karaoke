@@ -492,7 +492,7 @@ int main(int argc,char** argv) {
                 view.reverb=rt.wet.load();view.echo=rt.echo.load();view.music=rt.musicGain.load();view.gain=rt.gain.load();
                 view.input=inputName.empty()?L"Windows default":roomtone::desktop::wide(inputName);
                 view.output=outputName.empty()?L"Windows default":roomtone::desktop::wide(outputName);
-                view.notice=rt.interrupted.load()
+                view.notice=rt.interrupted.load()&&deviceActive
                     ?L"Audio interrupted. Reconnect manually (voice and song stay muted)."
                     :notice;
                 if(hasHandoff&&!rt.session.lines.empty()){

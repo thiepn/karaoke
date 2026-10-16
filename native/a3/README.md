@@ -63,3 +63,15 @@ All local file decoding and device lifecycle changes occur on the Windows owner/
 No localhost listener, network service, new audio engine, connected-provider integration, shell execution, credentials or new recording engine exists. Original browser recording and A1 Web Audio continue independently. Browser queue/music/lyrics are NOT live synchronized with native view: only the user-triggered offline .rtk snapshot transfers position and timed lyric data. Real hardware latency and Windows physical device recovery remain NOT TESTED.
 
 Owner qualification: first wired headphones, confirm initially muted/paused, test all lyric and transport controls; only later use Pebble V3 via USB/AUX at low volume. Confirm window layout, F8 panic mute, song replacement clearing lyrics, matching .rtk imports, manual selected-device recovery, 5-minute dropout performance, and physical QuadCast-to-Pebble dry voice delay. CI Win32 message/compile checks do not prove singing quality or acoustic feedback safety.
+
+
+## A3 device recovery and accessible seek controls
+
+- The one native Win32 karaoke window now has a focusable **Song position** slider between timed lyrics and transport controls. Click or use arrow keys, Page Up/Down, Home/End to seek within the existing WASAPI engine. Seeking never unmutes the microphone or restarts paused music, and is disabled while audio is interrupted.
+- Canceling the device selector no longer posts a thread-wide quit event. The karaoke window is temporarily disabled while the modal chooser is open, then re-enabled and focus restored.
+- USB/WASAPI device labels are snapshotted before opening selection. A named device is accepted only if unique, missing/duplicated/stale names are refused, and Windows default is chosen only when explicitly selected. Names are not stable endpoint IDs: a physically different device sharing the same unique name cannot be distinguished from its name alone. Physical device identity qualification remains outstanding.
+- Reconnect stops the old native callback, preserves its latest song position including a pending seek/restart, then starts the same engine MUTED and PAUSED. Driver reroute/stop blocks monitoring pending explicit owner recovery. No automatic background retry or additional audio engine was introduced.
+- Startup interruptions fail closed instead of clearing the interruption flag after the driver event. Missing or ambiguous device selection and failure to open/start WASAPI are shown as actionable window notices.
+- Timed lyric labels and button captions update only when their value changes to reduce redundant accessibility text-change signals. F8/F9/F10 remain window-local. Physical QuadCast mute or speaker power is still the dependable emergency action.
+
+CI tests the Win32 message/slider/selector lifecycle synthetically, offline decoding, portable C++ recovery policies and Chromium handoff. It does not test actual QuadCast/Pebble hardware, USB reconnect behavior, acoustic feedback or round-trip singing latency. Start with wired headphones.
