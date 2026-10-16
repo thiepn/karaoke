@@ -1,4 +1,5 @@
 #include "../src/karaoke_mix.hpp"
+#include "../src/transport.hpp"
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
@@ -59,6 +60,15 @@ int main(){
  require(mixer.position()==0&&!mixer.songEnded(),"seek back from EOF");
  auto restart=mixer.render(0,false,true,0.4f);
  require(std::isfinite(restart.left)&&std::isfinite(restart.right),"restart sample");
+ require(roomtone::parseSeekFrames("1.5",0,100000)==72000,"absolute seek");
+ require(roomtone::parseSeekFrames("+0.25",48000,100000)==60000,"forward relative seek");
+ require(roomtone::parseSeekFrames("-3",48000,100000)==0,"backward clamp");
+ require(roomtone::parseSeekFrames("99",0,100000)==100000,"EOF clamp");
+ for(const char* bad:{"nan","inf","12garbage","", "-infinity"}) {
+  bool rejected=false;try{(void)roomtone::parseSeekFrames(bad,0,100000);}
+  catch(const std::exception&){rejected=true;}
+  require(rejected,"seek invalid input rejected");
+ }
  roomtone::KaraokeMix empty;
  require(!empty.hasSong()&&empty.render(0,false,true,0).left==0,"empty song");
  std::cout<<"PASS native DSP: dry immediate, bounded reverb and echo, mute, stereo music+voice, pause, rewind, EOF, invalid input, output ceiling\n";
