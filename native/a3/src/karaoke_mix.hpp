@@ -16,7 +16,13 @@ public:
  bool songEnded()const noexcept {return hasSong()&&position_>=song_.size()/2;}
  std::size_t songFrames()const noexcept {return song_.size()/2;}
  std::size_t position()const noexcept {return position_;}
- void rewind() noexcept {position_=0;musicEnvelope_=0;}
+ // Called only on the audio callback thread, never concurrently with render().
+ // A 20ms fade-in after seeking avoids a hard discontinuity in backing music.
+ void seekFrames(std::size_t frames) noexcept {
+  position_=std::min(frames,songFrames());
+  musicEnvelope_=0;
+ }
+ void rewind() noexcept {seekFrames(0);}
  Stereo render(float microphone,bool voiceOn,bool musicOn,float musicGain) noexcept {
   const float targetVoice=voiceOn?1.0f:0.0f;
   const float targetMusic=musicOn&&hasSong()&&!songEnded()?1.0f:0.0f;

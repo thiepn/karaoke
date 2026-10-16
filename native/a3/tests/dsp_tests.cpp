@@ -50,6 +50,15 @@ int main(){
   auto s=mixer.render(2,true,false,10);
   require(std::isfinite(s.left)&&std::abs(s.left)<=0.700001f,"mixer clipping guard");
  }
+ // Seeking is clamped; only backing transport moves, vocal processing persists.
+ mixer.seekFrames(2400);
+ require(mixer.position()==2400&&!mixer.songEnded(),"middle seek");
+ mixer.seekFrames(999999);
+ require(mixer.position()==mixer.songFrames()&&mixer.songEnded(),"end seek clamp");
+ mixer.rewind();
+ require(mixer.position()==0&&!mixer.songEnded(),"seek back from EOF");
+ auto restart=mixer.render(0,false,true,0.4f);
+ require(std::isfinite(restart.left)&&std::isfinite(restart.right),"restart sample");
  roomtone::KaraokeMix empty;
  require(!empty.hasSong()&&empty.render(0,false,true,0).left==0,"empty song");
  std::cout<<"PASS native DSP: dry immediate, bounded reverb and echo, mute, stereo music+voice, pause, rewind, EOF, invalid input, output ceiling\n";
