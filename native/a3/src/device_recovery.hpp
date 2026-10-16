@@ -18,6 +18,23 @@ inline Match resolve(const std::string& name,const std::vector<std::string>& ava
  }
  return found<0?Match{State::Missing,-1}:Match{State::Unique,found};
 }
+// Explicit owner device identity; reject same-name hardware rather than silently
+// routing voice or music to an arbitrary replacement on reconnect.
+struct Selection {
+ std::string inputName,outputName;
+ bool inputDefault=true,outputDefault=true;
+};
+inline bool resolvePair(const Selection& selection,
+                        const std::vector<std::string>& inputs,
+                        const std::vector<std::string>& outputs,
+                        int& inputIndex,int& outputIndex) {
+ const Match in=resolve(selection.inputDefault?std::string{}:selection.inputName,inputs);
+ const Match out=resolve(selection.outputDefault?std::string{}:selection.outputName,outputs);
+ if((in.state!=State::Unique&&in.state!=State::Default)||
+    (out.state!=State::Unique&&out.state!=State::Default))return false;
+ inputIndex=in.index;outputIndex=out.index;
+ return true;
+}
 inline bool selectedName(int selected,const std::vector<std::string>& visible,std::string& result){
  if(selected==-1){result.clear();return true;}
  if(selected<0||static_cast<std::size_t>(selected)>=visible.size())return false;

@@ -11,6 +11,17 @@ int main(){
  need(resolve("USB QuadCast",first).state==State::Ambiguous,"duplicate name fail closed");
  need(resolve("Bluetooth mic",first).state==State::Missing,"disconnected name fail closed");
  need(resolve("Built-in microphone",first).index==1,"unique index");
+ Selection pair;
+ pair.inputDefault=false;pair.inputName="Built-in microphone";
+ pair.outputDefault=false;pair.outputName="USB QuadCast";
+ int inIndex=999,outIndex=999;
+ need(!resolvePair(pair,first,first,inIndex,outIndex),"ambiguous output must fail closed");
+ pair.outputName="Built-in microphone";
+ need(resolvePair(pair,first,first,inIndex,outIndex)&&inIndex==1&&outIndex==1,"unique pair resolves");
+ pair.inputDefault=true;pair.outputDefault=true;
+ need(resolvePair(pair,first,first,inIndex,outIndex)&&inIndex==-1&&outIndex==-1,"explicit default pair");
+ pair.inputDefault=false;pair.inputName="Bluetooth mic";
+ need(!resolvePair(pair,first,first,inIndex,outIndex),"missing input pair fails");
  std::string chosen="prior";
  need(!selectedName(0,first,chosen)&&chosen=="prior","ambiguous choice cannot replace previous");
  need(selectedName(-1,first,chosen)&&chosen.empty(),"explicit system default");
