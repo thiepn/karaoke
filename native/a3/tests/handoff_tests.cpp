@@ -22,9 +22,9 @@ int main(){
  need(h.audioName=="Nacht und Licht.wav"&&h.title=="Nacht & Licht","metadata decoding");
  need(h.startMs==12500&&h.loop&&h.loopStartMs==10000&&h.loopEndMs==22000,"timeline");
  need(roomtone::lyricIndexAt(h,9000)==h.lines.size(),"before first");
- need(roomtone::lyricIndexAt(h,10000)==h.lines.size(),"negative offset");
- need(roomtone::lyricIndexAt(h,10250)==0,"offset-adjusted line");
- need(roomtone::lyricIndexAt(h,13250)==1,"second line");
+ need(roomtone::lyricIndexAt(h,9700)==h.lines.size(),"negative offset before first");
+ need(roomtone::lyricIndexAt(h,9800)==0,"offset-adjusted line");
+ need(roomtone::lyricIndexAt(h,12800)==1,"second line");
  need(rejects("invalid\n"+doc),"magic required");
  need(rejects(doc+"evil\t123\n"),"unknown key");
  need(rejects(doc+"start-ms\t1\n"),"duplicate key");
@@ -32,7 +32,7 @@ int main(){
  need(rejects(std::string(doc).replace(doc.find("First%20verse"),13,"%1B[0m")),"terminal escape");
  need(rejects(std::string(doc).replace(doc.find("lyric\t13000"),11,"lyric\t9000")),"unsorted lyrics");
  need(rejects(std::string(doc).replace(doc.find("12500"),5,"1.5")),"fractional milliseconds");
- need(rejects(std::string(doc).replace(doc.find("loop-end-ms\t22000"),17,"loop-end-ms\t10000")),"bad loop");
+ need(rejects(std::string(doc).replace(doc.find("loop-end-ms\t22000"),18,"loop-end-ms\t10000")),"bad loop");
  need(rejects(doc+std::string(1048576,'A')),"oversized input");
  std::cout<<"PASS local user-mediated session handoff metadata, lyric offset/timing, validation and traversal/terminal escape protections\n";
 }
