@@ -50,7 +50,7 @@ try:
     select.value='test-pebble';
     select.dispatchEvent(new Event('change',{bubbles:true}));
    }""")
-   page.wait_for_function("() => engine?.route === 'media-element'")
+   page.wait_for_function("() => engine?.route === 'media-element' && engine.compatGate.gain.value > .99 && engine.directGate.gain.value < .01")
    result=page.evaluate("""() => ({
     route:engine.route, direct:engine.direct, paused:ui.voicePlayback.paused,
     sink:ui.voicePlayback.__testSink, record:engine.recordDest===nodes.recordDest,
@@ -64,7 +64,7 @@ try:
     ui.outputSelect.value='';
     ui.outputSelect.dispatchEvent(new Event('change',{bubbles:true}));
    }""")
-   page.wait_for_function("() => engine?.route === 'default-direct' && ui.voicePlayback.paused")
+   page.wait_for_function("() => engine?.route === 'default-direct' && ui.voicePlayback.paused && engine.directGate.gain.value > .99 && engine.compatGate.gain.value < .01")
    assert page.evaluate("() => !speakerOn && engine.direct && engine.directGate.gain.value===1")
    checks+=1
    # Failure to select an unsupported device must not silently switch audio
