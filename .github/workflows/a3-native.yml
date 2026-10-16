@@ -18,12 +18,12 @@ jobs:
       - name: Checkout exact event head
         uses: actions/checkout@v4
         with:
-          ref: \${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Verify inherited A1 assets and exact SHA
         shell: bash
         env:
-          EXPECTED_HEAD: \${{ github.event.pull_request.head.sha || github.sha }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
           test -f tests/audio_route_smoke.py
