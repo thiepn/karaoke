@@ -150,16 +150,15 @@ struct Window {
     self->notice=self->label(L"No physical latency measurements available",SS_LEFT,self->small);
     self->layout();
     SetTimer(h,1,120,nullptr);
-    RegisterHotKey(h,1,MOD_NOREPEAT,VK_F9);
-    RegisterHotKey(h,2,MOD_NOREPEAT,VK_F10);
     self->ready=true;self->render();
     return 0;
    }
    case WM_SIZE:self->layout();return 0;
    case WM_TIMER:if(w==1)self->render();return 0;
-   case WM_HOTKEY:
-    if(w==1)self->notify(Mic);
-    if(w==2)self->notify(Play);
+   case WM_KEYDOWN:
+    // Local to the focused karaoke window; never intercept other apps' F keys.
+    if(w==VK_F9)self->notify(Mic);
+    else if(w==VK_F10)self->notify(Play);
     return 0;
    case WM_COMMAND:
     if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=117)
@@ -169,7 +168,7 @@ struct Window {
     // Never leave monitoring running behind a closed window.
     DestroyWindow(h);return 0;
    case WM_DESTROY:
-    KillTimer(h,1);UnregisterHotKey(h,1);UnregisterHotKey(h,2);
+    KillTimer(h,1);
     PostQuitMessage(0);return 0;
   }
   return DefWindowProcW(h,message,w,l);
