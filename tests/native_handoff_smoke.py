@@ -18,7 +18,7 @@ try:
    page=context.new_page();errors=[]
    page.on('pageerror',lambda err:errors.append(str(err)))
    page.goto(f'http://127.0.0.1:{server.server_port}/index.html')
-   page.locator('#rtNativeHandoff').wait_for()
+   page.locator('#rtNativeHandoff').wait_for(state='attached')
    assert page.locator('#rtHandoffPrepare').is_disabled()
    checks+=1
    page.evaluate("""() => {

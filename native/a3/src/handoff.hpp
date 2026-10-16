@@ -69,7 +69,10 @@ inline int parseOffset(const std::string& str){
 inline Handoff parseHandoff(const std::string& data){
  if(data.size()>1024*1024)throw std::invalid_argument("session file exceeds 1 MiB");
  const auto first=data.find('\n');
- if(first==std::string::npos||data.substr(0,first)!="ROOMTONE_HANDOFF_V1")
+ std::string magic=first==std::string::npos?std::string{}:data.substr(0,first);
+ if(!magic.empty()&&magic.back()=='\r')magic.pop_back();
+ if(magic.size()>=3&&magic.substr(0,3)=="\xef\xbb\xbf")magic.erase(0,3);
+ if(first==std::string::npos||magic!="ROOMTONE_HANDOFF_V1")
   throw std::invalid_argument("wrong session format");
  Handoff h;
  bool audio=false,title=false,start=false,offset=false,loop=false,a=false,b=false;
@@ -78,6 +81,7 @@ inline Handoff parseHandoff(const std::string& data){
   const auto end=data.find('\n',cursor);
   auto line=data.substr(cursor,(end==std::string::npos?data.size():end)-cursor);
   cursor=end==std::string::npos?data.size():end+1;
+  if(!line.empty()&&line.back()=='\r')line.pop_back();
   if(line.empty())continue;
   auto tab=line.find('\t');
   if(tab==std::string::npos)throw std::invalid_argument("malformed session record");
