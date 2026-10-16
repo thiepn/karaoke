@@ -713,12 +713,21 @@ int main(int argc,char** argv) {
                         // Copy labels before modal loop, never keep raw enumeration
                         // pointers across owner interaction or possible hotplug.
                         std::vector<std::string> candidateInputs,candidateOutputs;
-                        for(ma_uint32 i=0;i<ni;++i)candidateInputs.emplace_back(ins[i].name);
-                        for(ma_uint32 i=0;i<no;++i)candidateOutputs.emplace_back(outs[i].name);
+                        std::vector<std::string> candidateInputIds,candidateOutputIds;
+                        for(ma_uint32 i=0;i<ni;++i){
+                            candidateInputs.emplace_back(ins[i].name);
+                            candidateInputIds.push_back(endpointId(ins[i]));
+                        }
+                        for(ma_uint32 i=0;i<no;++i){
+                            candidateOutputs.emplace_back(outs[i].name);
+                            candidateOutputIds.push_back(endpointId(outs[i]));
+                        }
                         std::vector<std::wstring> inputLabels,outputLabels;
                         for(const auto& name:candidateInputs)inputLabels.push_back(roomtone::desktop::wide(name));
                         for(const auto& name:candidateOutputs)outputLabels.push_back(roomtone::desktop::wide(name));
-                        const auto choice=roomtone::desktop::selectDevices(inputLabels,outputLabels,window.hwnd);
+                        const auto choice=roomtone::desktop::selectDevices(inputLabels,outputLabels,window.hwnd,
+                            roomtone::device_policy::chooserIndex(inputName,candidateInputs),
+                            roomtone::device_policy::chooserIndex(outputName,candidateOutputs));
                         if(choice){
                             std::string nextInput=inputName,nextOutput=outputName;
                             if(!roomtone::device_policy::selectedName(choice->first,candidateInputs,nextInput)||
@@ -726,9 +735,36 @@ int main(int argc,char** argv) {
                                 notice=L"Device changed while selecting or name is ambiguous. Previous choice retained; voice muted.";
                                 safeRestart();break;
                             }
+                            // The chooser can remain open during physical USB changes.
+                            // Verify both snapshot IDs against a NEW enumeration before
+                            // changing the user's device selection or endpoint pins.
+                            ma_device_info *verifiedOuts=nullptr,*verifiedIns=nullptr;
+                            ma_uint32 verifiedNo=0,verifiedNi=0;
+                            if(ma_context_get_devices(&context,&verifiedOuts,&verifiedNo,
+                                                     &verifiedIns,&verifiedNi)!=MA_SUCCESS){
+                                notice=L"Cannot validate devices after chooser. Previous endpoints retained; muted.";
+                                break;
+                            }
+                            std::vector<std::string> afterInputs,afterOutputs,afterInputIds,afterOutputIds;
+                            for(ma_uint32 i=0;i<verifiedNi;++i){
+                                afterInputs.emplace_back(verifiedIns[i].name);
+                                afterInputIds.push_back(endpointId(verifiedIns[i]));
+                            }
+                            for(ma_uint32 i=0;i<verifiedNo;++i){
+                                afterOutputs.emplace_back(verifiedOuts[i].name);
+                                afterOutputIds.push_back(endpointId(verifiedOuts[i]));
+                            }
+                            if(!roomtone::device_policy::retainsCandidate(
+                                  choice->first,candidateInputs,candidateInputIds,afterInputs,afterInputIds)||
+                               !roomtone::device_policy::retainsCandidate(
+                                  choice->second,candidateOutputs,candidateOutputIds,afterOutputs,afterOutputIds)){
+                                notice=L"Device list or endpoint ID changed during selection. Previous endpoint retained; muted. Reopen selector.";
+                                break;
+                            }
                             inputName=std::move(nextInput);
                             outputName=std::move(nextOutput);
-                            // An explicit selection authorizes a new endpoint identity.
+                            // Only an explicitly approved and freshly revalidated
+                            // selection may authorize different WASAPI endpoint IDs.
                             pinnedInputId.clear();pinnedOutputId.clear();
                         }
                         safeRestart();
