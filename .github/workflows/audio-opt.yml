@@ -52,6 +52,8 @@ jobs:
         run: python tests/u4_smoke.py
       - name: Run A1 profile and calibration browser tests
         run: python tests/audio_opt_smoke.py
+      - name: Run A1R local HTTP route switching and fake-device checks
+        run: python tests/audio_route_smoke.py
       - name: Check unchanged original U4 evidence and A1 evidence
         run: |
           test "$(find u4-evidence -maxdepth 1 -name 'u4-*.png' | wc -l)" -eq 12

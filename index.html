@@ -573,7 +573,7 @@
       <div class="card-head"><h2>02 / Speakers</h2><span class="tag">OUTPUT</span></div>
       <label class="block" for="outputSelect">Playback device</label>
       <select id="outputSelect"><option value="">System default speaker</option></select>
-      <p class="help" id="outputHelp">Choose Creative Pebble V3 if listed. Otherwise set Pebble V3 as Windows' default output.</p>
+      <p class="help" id="outputHelp">For the shortest browser output route, set Pebble V3 as the Windows default and keep System default selected. Choosing another device may require compatibility playback. Use USB or AUX, not Bluetooth.</p>
       <div class="control" style="margin-top:23px">
         <div class="label-line"><label for="volume">Live voice speaker volume</label><output class="readout" id="volumeValue">8%</output></div>
         <input id="volume" class="slider" type="range" min="0" max="100" value="8" step="1">
@@ -848,11 +848,20 @@ function updateAudioDiagnostics(){
   if(!ctx){ui.pathInfo.textContent='Audio engine not started.';ui.latencyInfo.textContent='Microphone-to-speaker delay cannot be measured accurately from browser buffer numbers.';return;}
   const base=typeof ctx.baseLatency==='number'?ctx.baseLatency:null;
   const output=typeof ctx.outputLatency==='number'?ctx.outputLatency:null;
-  const items=['Sample rate '+ctx.sampleRate+' Hz','output path '+(engine?.direct?'direct AudioContext':'compatibility media element')];
+  const route=engine?.route||'not configured';
+  const routeText={
+    'context-sink':'direct AudioContext / explicitly selected output',
+    'default-direct':'direct AudioContext / Windows default output',
+    'media-element':'compatibility media element / selected output (extra buffering possible)'
+  }[route]||route;
+  const items=['Sample rate '+ctx.sampleRate+' Hz','output path '+routeText];
   if(base!==null)items.push('base buffer ~'+Math.round(base*1000)+' ms');
   if(output!==null)items.push('reported output buffer ~'+Math.round(output*1000)+' ms');
+  const inputLatency=stream?.getAudioTracks()?.[0]?.getSettings?.()?.latency;
+  if(Number.isFinite(inputLatency))items.push('reported capture constraint ~'+Math.round(inputLatency*1000)+' ms');
+  if(stream)items.push('browser echo cancellation '+(stream.getAudioTracks()[0]?.getSettings?.()?.echoCancellation===true?'on':'off or unreported'));
   ui.pathInfo.textContent=items.join(' · ');
-  ui.latencyInfo.textContent='These are browser-reported output-buffer estimates, NOT measured voice round-trip latency. Microphone capture, DSP, Windows drivers, and speaker connection add additional delay.';
+  ui.latencyInfo.textContent='These are browser-reported buffer/settings values, NOT measured microphone-to-speaker latency. Capture, effects, Windows drivers and the speaker connection add delay. Try dry voice first; echo repeats intentionally come later.';
 }
 let starting = false;
 let recordSession = null, recordChunks = [], recordUrl = null, recordTicker = null;
@@ -1158,27 +1167,32 @@ function updateRoom() {
 // One persistent AudioContext owns both playback and the recording mix.
 // MediaElementAudioSourceNode can only be created once per media element;
 // retaining this context is necessary when stopping/restarting the mic.
+// Both outputs exist in ONE audio context, but only one is activated at a time.
+// Windows-default playback can bypass the extra MediaStream -> <audio> buffering
+// when AudioContext.setSinkId is unavailable. Explicit-device output retains
+// the original compatibility path. The recording branch is independent.
 async function ensureEngine(){
   if(engine){
     if(ctx.state==='closed')throw new Error('Audio engine closed. Reload the page.');
     if(ctx.state!=='running')await ctx.resume();
-    if(!engine.direct && ui.voicePlayback.paused)await ui.voicePlayback.play();
-    await applySpeaker(ctx,engine.direct);
+    await applySpeaker(ctx);
     return engine;
   }
   const ac=new AudioContext({latencyHint:'interactive'});
-  const direct=typeof ac.setSinkId==='function';
-  const out=direct?ac.destination:ac.createMediaStreamDestination();
+  const nativeSink=typeof ac.setSinkId==='function';
+  const directGate=ac.createGain(), compatGate=ac.createGain();
+  directGate.gain.value=0; compatGate.gain.value=0;
+  const compatOut=ac.createMediaStreamDestination();
   const recordDest=ac.createMediaStreamDestination();
-  // Sum both paths BEFORE the final peaks limiter. Individual microphone
-  // compression cannot prevent a hot backing track from clipping the mix.
   const playbackMix=ac.createGain(), playbackLimiter=ac.createDynamicsCompressor();
   const recordMix=ac.createGain(), recordLimiter=ac.createDynamicsCompressor();
   for(const limit of [playbackLimiter,recordLimiter]){
     limit.threshold.value=-4;limit.knee.value=2;limit.ratio.value=12;
     limit.attack.value=.004;limit.release.value=.12;
   }
-  playbackMix.connect(playbackLimiter);playbackLimiter.connect(out);
+  playbackMix.connect(playbackLimiter);
+  playbackLimiter.connect(directGate);directGate.connect(ac.destination);
+  playbackLimiter.connect(compatGate);compatGate.connect(compatOut);
   recordMix.connect(recordLimiter);recordLimiter.connect(recordDest);
   try{
     const musicSource=ac.createMediaElementSource(ui.songPlayer);
@@ -1189,25 +1203,25 @@ async function ensureEngine(){
     musicGain.connect(playbackMix);
     musicGain.connect(recordMusicGain);
     recordMusicGain.connect(recordMusicDelay);recordMusicDelay.connect(recordMix);
-    if(!direct) ui.voicePlayback.srcObject=out.stream;
-    // The output element is needed only for compatibility browsers.
+    // Disable the markup autoplay: assigning a MediaStream srcObject can
+    // otherwise start the silent compatibility element behind our route gate.
+    ui.voicePlayback.autoplay=false;
+    ui.voicePlayback.pause();
+    ui.voicePlayback.srcObject=compatOut.stream;
     ctx=ac;
-    engine={musicSource,musicGain,recordMusicGain,recordMusicDelay,recordDest,recordMix,playbackMix,playbackOut:out,direct};
+    engine={musicSource,musicGain,recordMusicGain,recordMusicDelay,recordDest,recordMix,playbackMix,
+      playbackOut:ac.destination,compatOut,directGate,compatGate,nativeSink,direct:false,route:'not configured'};
     ac.addEventListener('statechange',onContextState);
     await ac.resume();
-    if(!direct)await ui.voicePlayback.play();
-    await applySpeaker(ac,direct);
+    await applySpeaker(ac);
     lastOutputId=ui.outputSelect.value;
     const latency=(ac.baseLatency||0)+(ac.outputLatency||0);
-    ui.audioLatency.textContent=latency>0?'Browser output buffer: ~'+Math.round(latency*1000)+' ms · not total mic delay':'Output latency: browser/device dependent';
+    ui.audioLatency.textContent=latency>0?'Browser output buffers: ~'+Math.round(latency*1000)+' ms · not total mic delay':'Output latency: browser/device dependent';
     updateAudioDiagnostics();
     return engine;
   }catch(e){
-    // Once createMediaElementSource has bound the <audio> element, a new
-    // AudioContext cannot bind it again. Keep the context and retry playback
-    // on the next real user gesture rather than irreversibly breaking music.
-    // A MediaElementAudioSourceNode cannot be moved to a different context.
-    // Keep the graph for a later explicit user-gesture retry instead of closing it.
+    // Keep the persistent graph: a media element cannot bind another source
+    // after an aborted start, and the output gates remain muted if not configured.
     needsRecovery('Audio output could not start: '+(e?.message||e)+'. Check your Pebble V3 and choose Reconnect audio.');
     throw e;
   }
@@ -1228,20 +1242,47 @@ async function refreshDevices() {
       if(Array.from(select.options).some(o=>o.value===original))select.value=original;
       else if(original) missing.push(kind);
     }
-    if (!(engine?.direct || 'setSinkId' in ui.voicePlayback)) ui.outputHelp.textContent='This browser cannot select speakers here. Set Pebble V3 as the default Windows output.';
+    if (!('setSinkId' in ui.voicePlayback) && typeof AudioContext.prototype.setSinkId!=='function') ui.outputHelp.textContent='This browser cannot explicitly select speakers. Set Pebble V3 as the Windows default output for the direct route.';
     return missing;
   } catch(e) { console.warn('Device discovery unavailable',e);return []; }
 }
-async function applySpeaker(audio=ctx, isDirect=!!engine?.direct) {
+async function applySpeaker(audio=ctx){
   const id=ui.outputSelect.value;
-  if (audio && isDirect && typeof audio.setSinkId==='function') {
-    await audio.setSinkId(id || '');
-  } else if (typeof ui.voicePlayback.setSinkId==='function') {
-    await ui.voicePlayback.setSinkId(id);
-  } else if (id) {
-    throw new Error('Speaker selection is not supported in this browser. Select Pebble V3 in Windows Sound settings.');
+  if(!engine){
+    if(typeof ui.songPlayer.setSinkId==='function')await ui.songPlayer.setSinkId(id);
+    else if(id)throw new Error('Explicit output selection is unsupported; select Windows default.');
+    return;
   }
-  if(!engine && typeof ui.songPlayer.setSinkId==='function') await ui.songPlayer.setSinkId(id);
+  let nextRoute;
+  if(engine.nativeSink){
+    try{
+      await audio.setSinkId(id||'');
+      nextRoute='context-sink';
+    }catch(e){
+      // Some Chromium/device combinations expose setSinkId but reject a device.
+      // Preserve the original media-element fallback when it can really work.
+      if(!id || typeof ui.voicePlayback.setSinkId!=='function')throw e;
+    }
+  }
+  if(!nextRoute && id){
+    if(typeof ui.voicePlayback.setSinkId!=='function')
+      throw new Error('Explicit device requires browser setSinkId; select Windows default output instead.');
+    await ui.voicePlayback.setSinkId(id);
+    if(ui.voicePlayback.paused)await ui.voicePlayback.play();
+    nextRoute='media-element';
+  }
+  if(!nextRoute)nextRoute='default-direct';
+  // No output gains are switched until the chosen sink has accepted the route.
+  // Speaker changes always mute voice monitoring through the caller.
+  const t=audio.currentTime;
+  for(const gain of [engine.directGate.gain,engine.compatGate.gain])
+    gain.cancelScheduledValues(t);
+  engine.directGate.gain.setValueAtTime(nextRoute==='media-element'?0:1,t);
+  engine.compatGate.gain.setValueAtTime(nextRoute==='media-element'?1:0,t);
+  engine.route=nextRoute;
+  engine.direct=nextRoute!=='media-element';
+  if(engine.direct && !ui.voicePlayback.paused)ui.voicePlayback.pause();
+  updateAudioDiagnostics();
 }
 async function startMic() {
   if (starting || nodes) return;
@@ -1251,7 +1292,8 @@ async function startMic() {
   starting=true;setUiRunning(false);ui.startBtn.textContent='Connecting…';
   let freshStream=null;
   try {
-    const audioConstraints={channelCount:1,echoCancellation:ui.aec.checked,noiseSuppression:false,autoGainControl:false};
+    // An ideal latency request is advisory; actual device and driver buffering still apply.
+    const audioConstraints={channelCount:1,latency:{ideal:0.01},echoCancellation:ui.aec.checked,noiseSuppression:false,autoGainControl:false};
     if(ui.inputSelect.value) audioConstraints.deviceId={exact:ui.inputSelect.value};
     freshStream=await navigator.mediaDevices.getUserMedia({audio:audioConstraints,video:false});
     const shared=await ensureEngine();
@@ -1267,7 +1309,7 @@ async function startMic() {
     status('MIC LIVE · OUTPUT MUTED',true);
     ui.inputInfo.textContent='Connected: '+micName+'. Speak normally and watch the VOICE meter. Speakers are muted.';
     ui.speakerInfo.textContent='Microphone is ready. Start with low Pebble volume, then enable voice monitoring.';
-    info('Mic connected with '+(engine.direct?'direct output':'compatibility playback')+'. Music remains independent of mic monitoring.','success');
+    info('Mic connected via '+(engine.route==='media-element'?'compatibility media output':'direct audio output')+'. Music remains independent of voice monitoring.','success');
     track.addEventListener('ended',async()=>{
       if(stream!==freshStream || shutdownInProgress)return;
       micWasLost=true;
@@ -1571,9 +1613,10 @@ ui.outputSelect.addEventListener('change',async()=>{
     else if(typeof ui.songPlayer.setSinkId==='function')await ui.songPlayer.setSinkId(next);
     lastOutputId=next;
     clearRecovery();updateAudioDiagnostics();
-    info('Output selected. Live voice is muted; enable it explicitly after lowering speaker volume.','success');
+    info('Output selected: '+(engine?.route||'system default')+'. Live voice is muted; enable it explicitly after lowering speaker volume.','success');
   }catch(e){
     ui.outputSelect.value=lastOutputId;
+    updateAudioDiagnostics();
     needsRecovery('Speaker selection failed: '+(e?.message||e)+'. Check the Pebble connection, or use system default output.');
   }
 });
