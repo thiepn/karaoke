@@ -657,6 +657,39 @@ int main(int argc,char** argv) {
                                 if(!ready)rt.songPosition.store(static_cast<std::uint64_t>(*target)*48);
                             }
                         }break;
+                    case Action::BrowseLyrics:{
+                        if(!rt.mixer.hasSong()||!hasHandoff||rt.session.lines.empty()){
+                            notice=L"Load matching .rtk lyrics before browsing.";break;
+                        }
+                        // Source-owned timestamps; never access audio callback or browser.
+                        std::vector<std::wstring> rows;
+                        rows.reserve(rt.session.lines.size());
+                        const auto limit=static_cast<std::int64_t>(
+                            std::min<std::uint64_t>(rt.mixer.songFrames()/48,720000));
+                        for(const auto& lyric:rt.session.lines){
+                            const auto at=std::clamp<std::int64_t>(
+                                static_cast<std::int64_t>(lyric.milliseconds)+rt.session.offsetMs,0,limit);
+                            std::wstring line=roomtone::desktop::clock(static_cast<unsigned>(at/1000));
+                            line+=L"  ";
+                            line+=roomtone::desktop::wide(lyric.text);
+                            if(line.size()>300)line.resize(300);
+                            rows.push_back(std::move(line));
+                        }
+                        const auto ms=static_cast<std::uint32_t>(
+                            std::min<std::uint64_t>(rt.songPosition.load()/48,720000));
+                        const auto current=roomtone::lyricIndexAt(rt.session,ms);
+                        const auto chosen=roomtone::desktop::selectLyric(rows,
+                            current==rt.session.lines.size()?0:current,window.hwnd);
+                        if(!chosen){notice=L"Lyric navigation canceled; transport unchanged.";break;}
+                        const auto target=std::clamp<std::int64_t>(
+                            static_cast<std::int64_t>(rt.session.lines[*chosen].milliseconds)
+                                +rt.session.offsetMs,0,limit);
+                        rt.rewindRequest.store(false);
+                        rt.seekRequest.store(static_cast<std::uint64_t>(target)*48);
+                        if(!ready)rt.songPosition.store(static_cast<std::uint64_t>(target)*48);
+                        notice=L"Selected lyric seek queued without changing mic or music state.";
+                        break;
+                    }
                     case Action::Repeat:rt.repeat.store(!rt.repeat.load());break;
                     case Action::ReverbDown:level(rt.wet,-0.02f,0.25f);break;
                     case Action::ReverbUp:level(rt.wet,0.02f,0.25f);break;

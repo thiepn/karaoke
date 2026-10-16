@@ -205,6 +205,7 @@ struct Window {
         PostMessageW(h,WM_DEVICECHANGE,DBT_DEVNODES_CHANGED,0);
         PostMessageW(h,WM_TIMER,1,0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::PreviousLine,BN_CLICKED),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::BrowseLyrics,BN_CLICKED),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::Play,BN_CLICKED),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::EmergencyMute,BN_CLICKED),0);
         PostMessageW(h,WM_CLOSE,0,0);
