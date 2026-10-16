@@ -58,6 +58,7 @@ struct Window {
  HWND buttons[17]{};
  HFONT minorFont=nullptr,regular=nullptr,large=nullptr,heading=nullptr;
  bool ready=false;
+ bool syntheticTest=false;
  void applyFont(HWND h,HFONT f){if(h)SendMessageW(h,WM_SETFONT,reinterpret_cast<WPARAM>(f),TRUE);}
  HWND label(const wchar_t* value,DWORD flags,HFONT f) {
   auto h=CreateWindowExW(0,L"STATIC",value,WS_CHILD|WS_VISIBLE|flags,0,0,100,25,
@@ -151,7 +152,16 @@ struct Window {
     self->layout();
     SetTimer(h,1,120,nullptr);
     self->ready=true;self->render();
+    if(self->syntheticTest){
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::Play,BN_CLICKED),0);
+        PostMessageW(h,WM_CLOSE,0,0);
+    }
     return 0;
+   }
+   case WM_GETMINMAXINFO:{
+     auto* info=reinterpret_cast<MINMAXINFO*>(l);
+     info->ptMinTrackSize.x=620;info->ptMinTrackSize.y=725;
+     return 0;
    }
    case WM_SIZE:self->layout();return 0;
    case WM_TIMER:if(w==1)self->render();return 0;
@@ -187,6 +197,11 @@ struct Window {
   if(!hwnd)throw std::runtime_error("Unable to open Windows native karaoke interface");
   MSG m{};
   while(GetMessageW(&m,nullptr,0,0)>0){
+   // Non-global keys work even while a child button has keyboard focus.
+   if((m.hwnd==hwnd||IsChild(hwnd,m.hwnd))&&m.message==WM_KEYDOWN){
+    if(m.wParam==VK_F9){notify(Mic);continue;}
+    if(m.wParam==VK_F10){notify(Play);continue;}
+   }
    if(!IsDialogMessageW(hwnd,&m)){TranslateMessage(&m);DispatchMessageW(&m);}
   }
   DeleteObject(minorFont);DeleteObject(regular);DeleteObject(large);DeleteObject(heading);
