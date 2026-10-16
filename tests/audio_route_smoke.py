@@ -26,10 +26,10 @@ try:
    page.on('pageerror',lambda e:errors.append(str(e)))
    # Simulate a browser that does not implement AudioContext.setSinkId.
    # The HTMLMediaElement fallback remains available for explicit output.
-   page.add_init_script("""() => {
+   page.add_init_script("""(() => {
     Object.defineProperty(AudioContext.prototype,'setSinkId',{value:undefined,configurable:true});
     Object.defineProperty(HTMLMediaElement.prototype,'setSinkId',{value:async function(id){this.__testSink=id},configurable:true});
-   }""")
+   })()""")
    page.goto(url)
    page.evaluate("() => startMic()")
    page.wait_for_function("() => engine?.route === 'default-direct'")
