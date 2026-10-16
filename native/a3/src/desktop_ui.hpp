@@ -28,12 +28,12 @@ inline std::wstring wide(const std::string& value) {
 enum Action {
  Play=101,Mic,Back,Forward,Restart,Repeat,NextLine,
  ReverbDown,ReverbUp,EchoDown,EchoUp,MusicDown,MusicUp,
- ChooseSong,ChooseSession,ChooseDevices,Reconnect,EmergencyMute
+ ChooseSong,ChooseSession,ChooseDevices,Reconnect,EmergencyMute,GainDown,GainUp
 };
 struct Snapshot {
  std::wstring title,previous,current,next,input,output,notice;
  unsigned positionSeconds=0,durationSeconds=0;
- float reverb=0,echo=0,music=0;
+ float reverb=0,echo=0,music=0,gain=0;
  bool playing=false,microphone=false,repeat=false,interrupted=false,deviceActive=false,hasSong=false;
 };
 struct Controller {
@@ -55,7 +55,7 @@ struct Window {
  Controller controller;
  HWND hwnd=nullptr,title=nullptr,previous=nullptr,current=nullptr,next=nullptr,
       status=nullptr,device=nullptr,notice=nullptr;
- HWND buttons[18]{};
+ HWND buttons[20]{};
  HFONT minorFont=nullptr,regular=nullptr,large=nullptr,heading=nullptr;
  bool ready=false;
  bool syntheticTest=false;
@@ -87,8 +87,11 @@ struct Window {
   }
   MoveWindow(buttons[16],pad,503,w-2*pad,40,TRUE);
   MoveWindow(buttons[17],pad,550,w-2*pad,44,TRUE);
-  MoveWindow(device,pad,601,w-2*pad,38,TRUE);
-  MoveWindow(notice,pad,646,w-2*pad,44,TRUE);
+  const int half=(w-2*pad-gap)/2;
+  MoveWindow(buttons[18],pad,602,half,40,TRUE);
+  MoveWindow(buttons[19],pad+half+gap,602,half,40,TRUE);
+  MoveWindow(device,pad,655,w-2*pad,38,TRUE);
+  MoveWindow(notice,pad,704,w-2*pad,44,TRUE);
  }
  void render() {
   if(!controller.snapshot)return;
@@ -110,6 +113,8 @@ struct Window {
   setText(buttons[10],L"Echo +");
   setText(buttons[11],L"Music - ("+std::to_wstring(static_cast<int>(s.music*100))+L"%)");
   setText(buttons[12],L"Music +");
+  setText(buttons[18],L"Vocal gain - ("+std::to_wstring(static_cast<int>(s.gain*100))+L"%)");
+  setText(buttons[19],L"Vocal gain +");
   setText(device,L"Input: "+s.input+L"  |  Output: "+s.output);
   setText(notice,s.notice.empty()?L"Local WASAPI | No network | Buffer size is NOT measured mic-to-speaker latency":s.notice);
   EnableWindow(buttons[0],s.hasSong&&s.deviceActive&&!s.interrupted);
@@ -146,9 +151,10 @@ struct Window {
      {EchoDown,L"Echo -"},{EchoUp,L"Echo +"},{MusicDown,L"Music -"},
      {MusicUp,L"Music +"},{ChooseSong,L"Change song"},{ChooseSession,L"Import .rtk"},
      {ChooseDevices,L"Select devices"},{Reconnect,L"Reconnect (muted)"},
-     {EmergencyMute,L"MUTE VOICE NOW (F8)"}
+     {EmergencyMute,L"MUTE VOICE NOW (F8)"},
+     {GainDown,L"Vocal gain -"},{GainUp,L"Vocal gain +"}
     };
-    for(int i=0;i<18;++i)self->buttons[i]=self->button(labels[i].first,labels[i].second);
+    for(int i=0;i<20;++i)self->buttons[i]=self->button(labels[i].first,labels[i].second);
     self->device=self->label(L"Devices: Windows defaults",SS_LEFT,self->minorFont);
     self->notice=self->label(L"No physical latency measurements available",SS_LEFT,self->minorFont);
     self->layout();
@@ -163,7 +169,7 @@ struct Window {
    }
    case WM_GETMINMAXINFO:{
      auto* info=reinterpret_cast<MINMAXINFO*>(l);
-     info->ptMinTrackSize.x=620;info->ptMinTrackSize.y=790;
+     info->ptMinTrackSize.x=620;info->ptMinTrackSize.y=842;
      return 0;
    }
    case WM_SIZE:self->layout();return 0;
@@ -175,7 +181,7 @@ struct Window {
     else if(w==VK_F10)self->notify(Play);
     return 0;
    case WM_COMMAND:
-    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=118)
+    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=120)
      self->notify(static_cast<Action>(LOWORD(w)));
     return 0;
    case WM_CLOSE:
@@ -196,7 +202,7 @@ struct Window {
   cls.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);
   RegisterClassExW(&cls);
   hwnd=CreateWindowExW(0,name,L"ROOMTONE | Native Karaoke",
-       WS_OVERLAPPEDWINDOW|WS_VISIBLE,CW_USEDEFAULT,CW_USEDEFAULT,920,810,
+       WS_OVERLAPPEDWINDOW|WS_VISIBLE,CW_USEDEFAULT,CW_USEDEFAULT,920,870,
        nullptr,nullptr,cls.hInstance,this);
   if(!hwnd)throw std::runtime_error("Unable to open Windows native karaoke interface");
   MSG m{};

@@ -452,7 +452,7 @@ int main(int argc,char** argv) {
                 view.playing=rt.musicPlaying.load();view.microphone=rt.monitoring.load();
                 view.repeat=rt.repeat.load();view.interrupted=rt.interrupted.load();
                 view.deviceActive=deviceActive;view.hasSong=rt.mixer.hasSong();
-                view.reverb=rt.wet.load();view.echo=rt.echo.load();view.music=rt.musicGain.load();
+                view.reverb=rt.wet.load();view.echo=rt.echo.load();view.music=rt.musicGain.load();view.gain=rt.gain.load();
                 view.input=inputName.empty()?L"Windows default":roomtone::desktop::wide(inputName);
                 view.output=outputName.empty()?L"Windows default":roomtone::desktop::wide(outputName);
                 view.notice=notice;
@@ -528,6 +528,8 @@ int main(int argc,char** argv) {
                     case Action::EchoUp:level(rt.echo,0.02f,0.35f);break;
                     case Action::MusicDown:level(rt.musicGain,-0.03f,0.5f);break;
                     case Action::MusicUp:level(rt.musicGain,0.03f,0.5f);break;
+                    case Action::GainDown:level(rt.gain,-0.02f,0.35f);break;
+                    case Action::GainUp:level(rt.gain,0.02f,0.35f);break;
                     case Action::Reconnect:safeStop();safeRestart();break;
                     case Action::ChooseSong:{
                         rt.monitoring.store(false);rt.musicPlaying.store(false);
