@@ -362,6 +362,15 @@ int main(int argc,char** argv) {
             }catch(...){ma_context_uninit(&context);throw;}
         }
         std::string inputName,outputName;
+        // This WASAPI endpoint token is private, in-memory and never serialized.
+        // It identifies the selected OS endpoint, not the physical USB unit.
+        std::string pinnedInputId,pinnedOutputId;
+        const auto endpointId=[](const ma_device_info& info)->std::string{
+            const auto& bytes=info.id.wasapi;
+            std::size_t length=0;
+            while(length<sizeof(bytes)/sizeof(bytes[0])&&bytes[length]!=0)++length;
+            return std::string(reinterpret_cast<const char*>(bytes),length*sizeof(bytes[0]));
+        };
         if(!roomtone::device_policy::selectedName(opt.input,initialInputs,inputName)||
            !roomtone::device_policy::selectedName(opt.output,initialOutputs,outputName)){
             std::cerr<<"Device selection is missing, stale or ambiguous. Select a unique named device or Windows default.\n";
@@ -369,9 +378,9 @@ int main(int argc,char** argv) {
         }
         if(!inputName.empty())std::cout<<"Input: "<<inputName<<"\n";
         if(!outputName.empty())std::cout<<"Output: "<<outputName<<"\n";
-        // Only a unique device label is permitted. Label alone is NOT a stable
-        // Windows endpoint identifier; ambiguous/missing endpoints always fail closed.
-        // Selecting Windows default explicitly retains OS-owned device routing.
+        // A unique name selects the first OS endpoint. Once successfully started, its
+        // WASAPI endpoint ID is pinned until the owner deliberately re-selects devices.
+        // System defaults remain explicitly OS-owned. Same-name new endpoints fail closed.
         std::string selectedSongFile=chosenSong.empty()
              ?std::filesystem::u8path(opt.song).filename().u8string()
              :std::filesystem::path(chosenSong).filename().u8string();
@@ -422,6 +431,14 @@ int main(int argc,char** argv) {
                 return false;
             }
             const int capture=captured.index,playback=rendered.index;
+            const auto currentInput=capture>=0?endpointId(newInputs[capture]):std::string{};
+            const auto currentOutput=playback>=0?endpointId(newOutputs[playback]):std::string{};
+            if((capture>=0&&(currentInput.empty()||(!pinnedInputId.empty()&&currentInput!=pinnedInputId)))||
+               (playback>=0&&(currentOutput.empty()||(!pinnedOutputId.empty()&&currentOutput!=pinnedOutputId)))){
+                lastDeviceIssue=L"WASAPI endpoint identity changed or unavailable. Select devices again to authorize this endpoint.";
+                std::cout<<"Endpoint identity mismatch; cannot silently use a same-name replacement.\n";
+                return false;
+            }
             ma_device_config config=ma_device_config_init(ma_device_type_duplex);
             config.capture.format=ma_format_f32;config.capture.channels=1;
             config.playback.format=ma_format_f32;config.playback.channels=2;
@@ -455,6 +472,10 @@ int main(int argc,char** argv) {
                 lastDeviceIssue=L"Audio was interrupted during device startup. Reconnect only after checking Windows sound.";
                 return false;
             }
+            // The successful user-selected WASAPI endpoint is now pinned.
+            // A later hotplug cannot reuse its display name with a new ID.
+            if(capture>=0&&pinnedInputId.empty())pinnedInputId=currentInput;
+            if(playback>=0&&pinnedOutputId.empty())pinnedOutputId=currentOutput;
             return true;
         };
         if(!startDevice()&&!opt.gui){
@@ -508,7 +529,9 @@ int main(int argc,char** argv) {
                 const bool missing=(capture.state==roomtone::device_policy::State::Missing||
                     capture.state==roomtone::device_policy::State::Ambiguous||
                     playback.state==roomtone::device_policy::State::Missing||
-                    playback.state==roomtone::device_policy::State::Ambiguous);
+                    playback.state==roomtone::device_policy::State::Ambiguous||
+                    (capture.index>=0&&!pinnedInputId.empty()&&endpointId(ins[capture.index])!=pinnedInputId)||
+                    (playback.index>=0&&!pinnedOutputId.empty()&&endpointId(outs[playback.index])!=pinnedOutputId));
                 if(missing){
                     rt.monitoring.store(false);rt.musicPlaying.store(false);
                     if(deviceActive){rt.interrupted.store(true);safeStop();}
@@ -688,6 +711,8 @@ int main(int argc,char** argv) {
                             }
                             inputName=std::move(nextInput);
                             outputName=std::move(nextOutput);
+                            // An explicit selection authorizes a new endpoint identity.
+                            pinnedInputId.clear();pinnedOutputId.clear();
                         }
                         safeRestart();
                         if(!choice)notice=L"Device chooser canceled; previous selection restored, both outputs muted.";
