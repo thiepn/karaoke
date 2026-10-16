@@ -13,6 +13,7 @@
 #include <utility>
 #include <optional>
 #include <stdexcept>
+#include <cstddef>
 
 namespace roomtone::desktop {
 // All Win32 window/UI callbacks run on the application's main/control thread.
@@ -31,7 +32,7 @@ enum Action {
  Play=101,Mic,Back,Forward,Restart,Repeat,NextLine,
  ReverbDown,ReverbUp,EchoDown,EchoUp,MusicDown,MusicUp,
  ChooseSong,ChooseSession,ChooseDevices,Reconnect,EmergencyMute,GainDown,GainUp,
-  PreviousLine
+  PreviousLine,BrowseLyrics
 };
 struct Snapshot {
  std::wstring title,previous,current,next,input,output,notice;
@@ -68,7 +69,7 @@ struct Window {
  Controller controller;
  HWND hwnd=nullptr,title=nullptr,previous=nullptr,current=nullptr,next=nullptr,
       status=nullptr,device=nullptr,notice=nullptr,seekLabel=nullptr,seekBar=nullptr;
- HWND buttons[21]{};
+ HWND buttons[22]{};
  HFONT minorFont=nullptr,regular=nullptr,large=nullptr,heading=nullptr;
  bool ready=false;
  bool syntheticTest=false;
@@ -85,30 +86,36 @@ struct Window {
                  GetModuleHandleW(nullptr),nullptr);
   applyFont(h,regular);return h;
  }
+ // Compact native layout remains usable on 1366x768 Windows desktops.
+ // Taller windows grow the primary lyric region; all transport controls stay visible.
  void layout(){
+  if(!hwnd||!title)return;
   RECT bounds{};GetClientRect(hwnd,&bounds);
   const int w=std::max(570L,bounds.right-bounds.left);
-  const int pad=24;
-  MoveWindow(title,pad,15,w-2*pad,40,TRUE);
-  MoveWindow(previous,pad,70,w-2*pad,34,TRUE);
-  MoveWindow(current,pad,109,w-2*pad,96,TRUE);
-  MoveWindow(next,pad,208,w-2*pad,35,TRUE);
-  MoveWindow(seekLabel,pad,245,w-2*pad,22,TRUE);
-  MoveWindow(seekBar,pad,268,w-2*pad,32,TRUE);
-  MoveWindow(status,pad,305,w-2*pad,44,TRUE);
-  const int gap=9,columns=4,bw=(w-2*pad-gap*(columns-1))/columns;
+  const int height=std::max(640L,bounds.bottom-bounds.top);
+  const int lyricExtra=std::clamp(height-650,0,140);
+  const int pad=20,gap=8;
+  MoveWindow(title,pad,8,w-2*pad,27,TRUE);
+  MoveWindow(previous,pad,40,w-2*pad,22,TRUE);
+  MoveWindow(current,pad,66,w-2*pad,58+lyricExtra,TRUE);
+  MoveWindow(next,pad,125+lyricExtra,w-2*pad,24,TRUE);
+  MoveWindow(seekLabel,pad,151+lyricExtra,w-2*pad,18,TRUE);
+  MoveWindow(seekBar,pad,172+lyricExtra,w-2*pad,26,TRUE);
+  MoveWindow(status,pad,201+lyricExtra,w-2*pad,30,TRUE);
+  const int bw=(w-2*pad-gap*3)/4;
   for(int i=0;i<16;++i){
-   const int x=pad+(i%columns)*(bw+gap),y=355+(i/columns)*48;
-   MoveWindow(buttons[i],x,y,bw,40,TRUE);
+   const int x=pad+(i%4)*(bw+gap),y=237+lyricExtra+(i/4)*39;
+   MoveWindow(buttons[i],x,y,bw,34,TRUE);
   }
   const int half=(w-2*pad-gap)/2;
-  MoveWindow(buttons[16],pad,550,half,40,TRUE);
-  MoveWindow(buttons[20],pad+half+gap,550,half,40,TRUE);
-  MoveWindow(buttons[17],pad,597,w-2*pad,44,TRUE);
-  MoveWindow(buttons[18],pad,648,half,40,TRUE);
-  MoveWindow(buttons[19],pad+half+gap,648,half,40,TRUE);
-  MoveWindow(device,pad,699,w-2*pad,38,TRUE);
-  MoveWindow(notice,pad,746,w-2*pad,60,TRUE);
+  MoveWindow(buttons[16],pad,395+lyricExtra,half,32,TRUE);
+  MoveWindow(buttons[20],pad+half+gap,395+lyricExtra,half,32,TRUE);
+  MoveWindow(buttons[21],pad,434+lyricExtra,w-2*pad,32,TRUE);
+  MoveWindow(buttons[17],pad,473+lyricExtra,w-2*pad,34,TRUE);
+  MoveWindow(buttons[18],pad,513+lyricExtra,half,31,TRUE);
+  MoveWindow(buttons[19],pad+half+gap,513+lyricExtra,half,31,TRUE);
+  MoveWindow(device,pad,551+lyricExtra,w-2*pad,30,TRUE);
+  MoveWindow(notice,pad,585+lyricExtra,w-2*pad,56,TRUE);
  }
  void render() {
   if(!controller.snapshot)return;
@@ -146,6 +153,7 @@ struct Window {
   for(int i:{2,3,4,5})EnableWindow(buttons[i],s.hasSong);
    EnableWindow(buttons[6],s.hasSong&&s.hasLyrics);
    EnableWindow(buttons[20],s.hasSong&&s.hasLyrics);
+   EnableWindow(buttons[21],s.hasSong&&s.hasLyrics);
  }
  void notify(Action action){
   if(controller.action)controller.action(action);
@@ -182,9 +190,10 @@ struct Window {
      {ChooseDevices,L"Select devices"},{Reconnect,L"Reconnect (muted)"},
      {EmergencyMute,L"MUTE VOICE NOW (F8)"},
      {GainDown,L"Vocal gain -"},{GainUp,L"Vocal gain +"},
-      {PreviousLine,L"Previous lyric (Ctrl+Left)"}
+      {PreviousLine,L"Previous lyric (Ctrl+Left)"},
+      {BrowseLyrics,L"Browse all timed lyrics (Ctrl+L)"}
     };
-    for(int i=0;i<21;++i)self->buttons[i]=self->button(labels[i].first,labels[i].second);
+    for(int i=0;i<22;++i)self->buttons[i]=self->button(labels[i].first,labels[i].second);
     self->device=self->label(L"Devices: Windows defaults",SS_LEFT,self->minorFont);
     self->notice=self->label(L"No physical latency measurements available",SS_LEFT,self->minorFont);
     self->layout();
@@ -204,7 +213,7 @@ struct Window {
    }
    case WM_GETMINMAXINFO:{
      auto* info=reinterpret_cast<MINMAXINFO*>(l);
-     info->ptMinTrackSize.x=620;info->ptMinTrackSize.y=940;
+     info->ptMinTrackSize.x=620;info->ptMinTrackSize.y=700;
      return 0;
    }
    case WM_SIZE:self->layout();return 0;
@@ -238,7 +247,7 @@ struct Window {
     else if(w==VK_F10)self->notify(Play);
     return 0;
    case WM_COMMAND:
-    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=121)
+    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=122)
      self->notify(static_cast<Action>(LOWORD(w)));
     return 0;
    case WM_CLOSE:
@@ -261,7 +270,7 @@ struct Window {
   cls.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);
   RegisterClassExW(&cls);
   hwnd=CreateWindowExW(0,name,L"ROOMTONE | Native Karaoke",
-       WS_OVERLAPPEDWINDOW|WS_VISIBLE,CW_USEDEFAULT,CW_USEDEFAULT,920,960,
+       WS_OVERLAPPEDWINDOW|WS_VISIBLE,CW_USEDEFAULT,CW_USEDEFAULT,860,745,
        nullptr,nullptr,cls.hInstance,this);
   if(!hwnd)throw std::runtime_error("Unable to open Windows native karaoke interface");
   MSG m{};
@@ -279,6 +288,7 @@ struct Window {
        case 'O':shortcut=ChooseSong;break;
        case 'I':shortcut=ChooseSession;break;
        case 'D':shortcut=ChooseDevices;break;
+       case 'L':shortcut=BrowseLyrics;break;
        case 'R':shortcut=Reconnect;break;
        default:recognized=false;break;
       }
@@ -387,6 +397,96 @@ struct DeviceChooser{
   return std::make_pair(inputChoice,outputChoice);
  }
 };
+// Owner-only accessible list: timed source lines remain in the native .rtk.
+// The dialog never starts playback, changes microphone state, or reads any files.
+struct LyricChooser {
+ HWND hwnd=nullptr,list=nullptr,owner=nullptr;
+ HFONT text=nullptr;
+ const std::vector<std::wstring>* rows=nullptr;
+ std::size_t current=0;
+ std::optional<std::size_t> chosen;
+ bool syntheticCancel=false;
+ static LRESULT CALLBACK proc(HWND h,UINT msg,WPARAM w,LPARAM l){
+  auto* self=reinterpret_cast<LyricChooser*>(GetWindowLongPtrW(h,GWLP_USERDATA));
+  if(msg==WM_NCCREATE){
+   self=static_cast<LyricChooser*>(reinterpret_cast<CREATESTRUCTW*>(l)->lpCreateParams);
+   self->hwnd=h;SetWindowLongPtrW(h,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(self));return TRUE;
+  }
+  if(!self)return DefWindowProcW(h,msg,w,l);
+  switch(msg){
+   case WM_CREATE:{
+    self->text=font(18);
+    HWND hint=CreateWindowW(L"STATIC",L"Choose a timed line. Arrow keys move; Enter jumps. Escape cancels.",
+       WS_CHILD|WS_VISIBLE,16,12,686,26,h,nullptr,GetModuleHandleW(nullptr),nullptr);
+    SendMessageW(hint,WM_SETFONT,reinterpret_cast<WPARAM>(self->text),TRUE);
+    self->list=CreateWindowExW(WS_EX_CLIENTEDGE,L"LISTBOX",L"",
+       WS_CHILD|WS_VISIBLE|WS_TABSTOP|WS_VSCROLL|LBS_NOTIFY|LBS_NOINTEGRALHEIGHT,
+       16,44,686,355,h,reinterpret_cast<HMENU>(201),GetModuleHandleW(nullptr),nullptr);
+    SendMessageW(self->list,WM_SETFONT,reinterpret_cast<WPARAM>(self->text),TRUE);
+    for(const auto& line:*self->rows)
+     SendMessageW(self->list,LB_ADDSTRING,0,reinterpret_cast<LPARAM>(line.c_str()));
+    SendMessageW(self->list,LB_SETCURSEL,static_cast<WPARAM>(
+     std::min(self->current,self->rows->size()-1)),0);
+    auto createButton=[&](const wchar_t* name,int x,int id,DWORD style){
+     HWND b=CreateWindowW(L"BUTTON",name,WS_CHILD|WS_VISIBLE|WS_TABSTOP|style,
+       x,412,150,37,h,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),GetModuleHandleW(nullptr),nullptr);
+     SendMessageW(b,WM_SETFONT,reinterpret_cast<WPARAM>(self->text),TRUE);
+    };
+    createButton(L"Jump to line",398,301,BS_DEFPUSHBUTTON);
+    createButton(L"Cancel",558,302,BS_PUSHBUTTON);
+    SetFocus(self->list);
+    if(self->syntheticCancel)PostMessageW(h,WM_CLOSE,0,0);
+    return 0;
+   }
+   case WM_COMMAND:
+    if(LOWORD(w)==301||(LOWORD(w)==201&&HIWORD(w)==LBN_DBLCLK)){
+     const auto selected=SendMessageW(self->list,LB_GETCURSEL,0,0);
+     if(selected!=LB_ERR&&static_cast<std::size_t>(selected)<self->rows->size()){
+      self->chosen=static_cast<std::size_t>(selected);DestroyWindow(h);
+     }
+     return 0;
+    }
+    if(LOWORD(w)==302){DestroyWindow(h);return 0;}
+    break;
+   case WM_CLOSE:DestroyWindow(h);return 0;
+   case WM_DESTROY:DeleteObject(self->text);self->hwnd=nullptr;return 0;
+  }
+  return DefWindowProcW(h,msg,w,l);
+ }
+ std::optional<std::size_t> run(){
+  if(!rows||rows->empty())return std::nullopt;
+  WNDCLASSEXW cls{};cls.cbSize=sizeof(cls);cls.lpfnWndProc=proc;
+  cls.hInstance=GetModuleHandleW(nullptr);cls.lpszClassName=L"ROOMTONE Timed Lyrics Picker";
+  cls.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);
+  cls.hCursor=LoadCursorW(nullptr,MAKEINTRESOURCEW(32512));
+  RegisterClassExW(&cls);
+  const bool disableOwner=owner&&IsWindow(owner)&&IsWindowEnabled(owner);
+  const HWND priorFocus=disableOwner?GetFocus():nullptr;
+  if(disableOwner)EnableWindow(owner,FALSE);
+  hwnd=CreateWindowExW(WS_EX_DLGMODALFRAME,cls.lpszClassName,L"ROOMTONE | Timed lyrics",
+    WS_CAPTION|WS_SYSMENU|WS_VISIBLE,CW_USEDEFAULT,CW_USEDEFAULT,735,505,
+    owner,nullptr,cls.hInstance,this);
+  if(!hwnd){if(disableOwner)EnableWindow(owner,TRUE);
+   throw std::runtime_error("Cannot create native lyric navigator");}
+  MSG msg{};
+  while(hwnd&&IsWindow(hwnd)){
+   const auto result=GetMessageW(&msg,nullptr,0,0);
+   if(result<=0){if(result==0)PostQuitMessage(static_cast<int>(msg.wParam));break;}
+   if(!IsDialogMessageW(hwnd,&msg)){TranslateMessage(&msg);DispatchMessageW(&msg);}
+  }
+  if(disableOwner&&IsWindow(owner)){
+   EnableWindow(owner,TRUE);SetForegroundWindow(owner);
+   if(priorFocus&&IsWindow(priorFocus)&&(priorFocus==owner||IsChild(owner,priorFocus)))
+    SetFocus(priorFocus);
+  }
+  return chosen;
+ }
+};
+inline std::optional<std::size_t> selectLyric(const std::vector<std::wstring>& rows,
+ std::size_t current,HWND owner=nullptr){
+ LyricChooser picker;picker.rows=&rows;picker.current=current;picker.owner=owner;
+ return picker.run();
+}
 inline std::optional<std::pair<int,int>> selectDevices(
  const std::vector<std::wstring>& inputs,const std::vector<std::wstring>& outputs,
  HWND owner=nullptr,int initialInput=-1,int initialOutput=-1){
