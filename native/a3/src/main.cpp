@@ -480,6 +480,10 @@ int main(int argc,char** argv) {
                         target.store(std::clamp(std::round((current+change)*100.0f)/100.0f,0.0f,maximum));
                     };
                     switch(action){
+                    case Action::EmergencyMute:
+                        rt.monitoring.store(false);
+                        notice=L"VOICE MUTED immediately. Use physical mute/power for acoustic feedback.";
+                        break;
                     case Action::Mic:
                         if(!ready){notice=L"Reconnect audio before enabling the microphone.";break;}
                         if(!rt.monitoring.load()){

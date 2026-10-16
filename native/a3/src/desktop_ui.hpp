@@ -28,7 +28,7 @@ inline std::wstring wide(const std::string& value) {
 enum Action {
  Play=101,Mic,Back,Forward,Restart,Repeat,NextLine,
  ReverbDown,ReverbUp,EchoDown,EchoUp,MusicDown,MusicUp,
- ChooseSong,ChooseSession,ChooseDevices,Reconnect
+ ChooseSong,ChooseSession,ChooseDevices,Reconnect,EmergencyMute
 };
 struct Snapshot {
  std::wstring title,previous,current,next,input,output,notice;
@@ -55,7 +55,7 @@ struct Window {
  Controller controller;
  HWND hwnd=nullptr,title=nullptr,previous=nullptr,current=nullptr,next=nullptr,
       status=nullptr,device=nullptr,notice=nullptr;
- HWND buttons[17]{};
+ HWND buttons[18]{};
  HFONT minorFont=nullptr,regular=nullptr,large=nullptr,heading=nullptr;
  bool ready=false;
  bool syntheticTest=false;
@@ -86,8 +86,9 @@ struct Window {
    MoveWindow(buttons[i],x,y,bw,40,TRUE);
   }
   MoveWindow(buttons[16],pad,503,w-2*pad,40,TRUE);
-  MoveWindow(device,pad,558,w-2*pad,38,TRUE);
-  MoveWindow(notice,pad,606,w-2*pad,44,TRUE);
+  MoveWindow(buttons[17],pad,550,w-2*pad,44,TRUE);
+  MoveWindow(device,pad,601,w-2*pad,38,TRUE);
+  MoveWindow(notice,pad,646,w-2*pad,44,TRUE);
  }
  void render() {
   if(!controller.snapshot)return;
@@ -144,9 +145,10 @@ struct Window {
      {NextLine,L"Next lyric"},{ReverbDown,L"Reverb -"},{ReverbUp,L"Reverb +"},
      {EchoDown,L"Echo -"},{EchoUp,L"Echo +"},{MusicDown,L"Music -"},
      {MusicUp,L"Music +"},{ChooseSong,L"Change song"},{ChooseSession,L"Import .rtk"},
-     {ChooseDevices,L"Select devices"},{Reconnect,L"Reconnect (muted)"}
+     {ChooseDevices,L"Select devices"},{Reconnect,L"Reconnect (muted)"},
+     {EmergencyMute,L"MUTE VOICE NOW (F8)"}
     };
-    for(int i=0;i<17;++i)self->buttons[i]=self->button(labels[i].first,labels[i].second);
+    for(int i=0;i<18;++i)self->buttons[i]=self->button(labels[i].first,labels[i].second);
     self->device=self->label(L"Devices: Windows defaults",SS_LEFT,self->minorFont);
     self->notice=self->label(L"No physical latency measurements available",SS_LEFT,self->minorFont);
     self->layout();
@@ -160,18 +162,19 @@ struct Window {
    }
    case WM_GETMINMAXINFO:{
      auto* info=reinterpret_cast<MINMAXINFO*>(l);
-     info->ptMinTrackSize.x=620;info->ptMinTrackSize.y=725;
+     info->ptMinTrackSize.x=620;info->ptMinTrackSize.y=790;
      return 0;
    }
    case WM_SIZE:self->layout();return 0;
    case WM_TIMER:if(w==1)self->render();return 0;
    case WM_KEYDOWN:
     // Local to the focused karaoke window; never intercept other apps' F keys.
-    if(w==VK_F9)self->notify(Mic);
+    if(w==VK_F8)self->notify(EmergencyMute);
+    else if(w==VK_F9)self->notify(Mic);
     else if(w==VK_F10)self->notify(Play);
     return 0;
    case WM_COMMAND:
-    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=117)
+    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=118)
      self->notify(static_cast<Action>(LOWORD(w)));
     return 0;
    case WM_CLOSE:
@@ -192,13 +195,14 @@ struct Window {
   cls.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);
   RegisterClassExW(&cls);
   hwnd=CreateWindowExW(0,name,L"ROOMTONE | Native Karaoke",
-       WS_OVERLAPPEDWINDOW|WS_VISIBLE,CW_USEDEFAULT,CW_USEDEFAULT,920,750,
+       WS_OVERLAPPEDWINDOW|WS_VISIBLE,CW_USEDEFAULT,CW_USEDEFAULT,920,810,
        nullptr,nullptr,cls.hInstance,this);
   if(!hwnd)throw std::runtime_error("Unable to open Windows native karaoke interface");
   MSG m{};
   while(GetMessageW(&m,nullptr,0,0)>0){
    // Non-global keys work even while a child button has keyboard focus.
    if((m.hwnd==hwnd||IsChild(hwnd,m.hwnd))&&m.message==WM_KEYDOWN){
+    if(m.wParam==VK_F8){notify(EmergencyMute);continue;}
     if(m.wParam==VK_F9){notify(Mic);continue;}
     if(m.wParam==VK_F10){notify(Play);continue;}
    }
