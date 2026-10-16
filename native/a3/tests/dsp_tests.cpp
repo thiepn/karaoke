@@ -69,6 +69,13 @@ int main(){
   catch(const std::exception&){rejected=true;}
   require(rejected,"seek invalid input rejected");
  }
+ std::vector<float> replacement(2000,0.2f);
+ mixer.replaceSong(std::move(replacement));
+ require(mixer.songFrames()==1000&&mixer.position()==0,"replace local track");
+ for(int i=0;i<1100;++i)mixer.render(0,false,true,0.2f);
+ require(mixer.songEnded(),"replacement EOF");
+ mixer.replaceSong({});
+ require(!mixer.hasSong()&&mixer.position()==0,"clear song");
  roomtone::KaraokeMix empty;
  require(!empty.hasSong()&&empty.render(0,false,true,0).left==0,"empty song");
  std::cout<<"PASS native DSP: dry immediate, bounded reverb and echo, mute, stereo music+voice, pause, rewind, EOF, invalid input, output ceiling\n";

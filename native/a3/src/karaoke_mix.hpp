@@ -23,6 +23,8 @@ public:
   musicEnvelope_=0;
  }
  void rewind() noexcept {seekFrames(0);}
+ // Only replace after the audio device/callback is fully uninitialized.
+ void replaceSong(std::vector<float> next) noexcept {song_=std::move(next);seekFrames(0);}
  Stereo render(float microphone,bool voiceOn,bool musicOn,float musicGain) noexcept {
   const float targetVoice=voiceOn?1.0f:0.0f;
   const float targetMusic=musicOn&&hasSong()&&!songEnded()?1.0f:0.0f;
@@ -45,7 +47,7 @@ private:
  static float bound(float x) noexcept {
   return std::clamp(std::isfinite(x)?x:0.0f,-0.7f,0.7f);
  }
- const std::vector<float> song_;
+ std::vector<float> song_;
  std::size_t position_=0;
  float voiceEnvelope_=0,musicEnvelope_=0;
 };

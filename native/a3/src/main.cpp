@@ -336,8 +336,9 @@ int main(int argc,char** argv) {
         std::cout<<"\nRUNNING MIC MUTED + SONG PAUSED. Requested "<<opt.period<<" frames at 48000 Hz (NOT measured latency).\n"
                  <<"Predecoded backing frames: "<<rt.mixer.songFrames()<<"\n"
                  <<"HEADPHONES FIRST; NO acoustic feedback detection. Physical microphone mute is fastest.\n"
-                 <<"Commands m, p, r, seek SECONDS (+/- relative), loop on/off, reconnect,\n"
-                 <<"status, wet/gain/echo/feedback/echo-ms/music NUMBER, q.\n";
+                 <<"Commands m, p, r, open, load PATH, seek SECONDS (+/- relative),\n"
+                 <<"loop on/off, reconnect,\n"
+                 <<"open or load PATH to replace song, status, live effect controls, q.\n";
         std::string command;
         while(std::getline(std::cin,command)){
             try {
@@ -345,7 +346,32 @@ int main(int argc,char** argv) {
                 std::string op,value,extra;
                 in>>op;if(op.empty())continue;
                 if(op=="q"||op=="quit")break;
-                if(op=="reconnect"){
+                if(op=="open"||op=="load"){
+                    rt.monitoring.store(false);rt.musicPlaying.store(false);
+                    std::vector<float> next;
+                    if(op=="open"){
+                        const auto chosen=chooseSongFile();
+                        if(chosen.empty()){std::cout<<"Selection cancelled; previous song retained, mic and music muted.\n";continue;}
+                        next=loadSong("",chosen);
+                    }else{
+                        std::string path;std::getline(in,path);
+                        const auto first=path.find_first_not_of(" \t");
+                        if(first==std::string::npos)throw std::invalid_argument("load requires a local path");
+                        path.erase(0,first);
+                        if(path.size()>=2&&path.front()=='"'&&path.back()=='"')path=path.substr(1,path.size()-2);
+                        next=loadSong(path);
+                    }
+                    if(next.empty())throw std::runtime_error("Selected file has no audio");
+                    // Stop and join the real-time thread before replacing audio memory.
+                    if(deviceActive){ma_device_uninit(&device);deviceActive=false;}
+                    rt.seekRequest.store(std::numeric_limits<std::uint64_t>::max());
+                    rt.rewindRequest.store(false);
+                    rt.mixer.replaceSong(std::move(next));
+                    rt.mixer.vocal.reset();
+                    rt.songPosition.store(0);
+                    if(startDevice())std::cout<<"New song loaded: MIC MUTED + SONG PAUSED. Press p to play.\n";
+                    else std::cout<<"New song loaded, but device unavailable. Retry reconnect.\n";
+                }else if(op=="reconnect"){
                     rt.monitoring.store(false);rt.musicPlaying.store(false);
                     if(deviceActive){ma_device_uninit(&device);deviceActive=false;}
                     // Callback is fully stopped; clear stale reflections.
