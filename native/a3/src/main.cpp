@@ -6,6 +6,7 @@
 #include "karaoke_mix.hpp"
 #include "transport.hpp"
 #include "handoff.hpp"
+#include "desktop_ui.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <sstream>
@@ -35,7 +36,7 @@ struct Options {
     float echo=0.12f,feedback=0.15f,musicGain=0.2f;
     unsigned echoMs=280;
     std::string song,handoffFile;
-    bool list = false,probeSong=false,pickSong=false,guided=false,probeHandoff=false,pickHandoff=false;
+    bool list = false,probeSong=false,pickSong=false,guided=false,probeHandoff=false,pickHandoff=false,gui=false;
 };
 static int readInteger(const std::string& s) {
     std::size_t count=0;
@@ -54,6 +55,8 @@ static Options parse(int argc,char** argv) {
     for(int i=1;i<argc;++i) {
         const std::string key=argv[i];
         if(key=="--list"){opt.list=true;continue;}
+        if(key=="--gui"){opt.gui=true;continue;}
+        if(key=="--console"){opt.gui=false;continue;}
         if(key=="--probe-song"){opt.probeSong=true;continue;}
         if(key=="--pick-song"){opt.pickSong=true;continue;}
         if(key=="--setup"){opt.guided=true;continue;}
@@ -73,6 +76,8 @@ static Options parse(int argc,char** argv) {
                      <<"  --pick-handoff  choose downloaded .rtk in Windows file picker\n"
                      <<"  --probe-handoff  validate .rtk WITHOUT opening devices\n"
                      <<"  --setup  guided mic/speaker device selection\n"
+                     <<"  --gui  in-process Win32 karaoke view\n"
+                     <<"  --console  original command-line controls\n"
                      <<"  --echo 0..0.35 --feedback 0..0.35 --echo-ms 80..550\n"
                      <<"  --music 0..0.50  backing track volume\n"
                      <<"Starts MIC MUTED and SONG PAUSED. Commands m/p/r, status,\n"
@@ -257,7 +262,7 @@ int main(int argc,char** argv) {
 #ifdef _WIN32
     try {
         Options opt=parse(argc,argv);
-        if(argc==1)opt.guided=true; // Double-click opens guided setup.
+        if(argc==1){opt.guided=true;opt.gui=true;} // Double-click uses Win32 UI.
         if(opt.probeHandoff){
             const auto session=roomtone::loadHandoff(opt.handoffFile);
             std::cout<<"OFFLINE_SESSION_OK audio="<<session.audioName<<" lyrics="<<session.lines.size()
@@ -280,10 +285,16 @@ int main(int argc,char** argv) {
         if(!opt.list&&!opt.probeSong&&(opt.pickHandoff||(opt.guided&&!hasHandoff))){
             bool choose=opt.pickHandoff;
             if(!choose&&opt.guided){
-                std::cout<<"Import the downloaded browser .rtk session? y/N: "<<std::flush;
-                std::string answer;
-                if(!std::getline(std::cin,answer))return 0;
-                choose=answer=="y"||answer=="Y";
+                if(opt.gui){
+                    choose=MessageBoxW(nullptr,
+                         L"Import a downloaded ROOMTONE .rtk session with lyrics and timing?",
+                         L"ROOMTONE local handoff",MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2)==IDYES;
+                }else{
+                    std::cout<<"Import downloaded browser .rtk session? y/N: "<<std::flush;
+                    std::string answer;
+                    if(!std::getline(std::cin,answer))return 0;
+                    choose=answer=="y"||answer=="Y";
+                }
             }
             if(choose){
                 const auto selected=chooseHandoffFile();
@@ -329,10 +340,19 @@ int main(int argc,char** argv) {
             printDevices("Playback",outputs,outCount);
             ma_context_uninit(&context);return 0;
         }
-        if(opt.guided) {
+        if(opt.guided){
             try{
-                opt.input=chooseDeviceIndex("Microphone",inputs,inCount);
-                opt.output=chooseDeviceIndex("Speaker",outputs,outCount);
+                if(opt.gui){
+                    std::vector<std::wstring> microphones,speakers;
+                    for(ma_uint32 i=0;i<inCount;++i)microphones.push_back(roomtone::desktop::wide(inputs[i].name));
+                    for(ma_uint32 i=0;i<outCount;++i)speakers.push_back(roomtone::desktop::wide(outputs[i].name));
+                    const auto choice=roomtone::desktop::selectDevices(microphones,speakers);
+                    if(!choice){ma_context_uninit(&context);return 0;}
+                    opt.input=choice->first;opt.output=choice->second;
+                }else{
+                    opt.input=chooseDeviceIndex("Microphone",inputs,inCount);
+                    opt.output=chooseDeviceIndex("Speaker",outputs,outCount);
+                }
             }catch(...){ma_context_uninit(&context);throw;}
         }
         if(opt.input>=static_cast<int>(inCount)||opt.output>=static_cast<int>(outCount)){
@@ -343,8 +363,13 @@ int main(int argc,char** argv) {
         if(opt.output>=0)std::cout<<"Output: "<<outputs[opt.output].name<<"\n";
         // Remember exact names, not volatile enumeration indexes. Reconnection
         // refuses to silently attach to a different named device.
-        const std::string inputName=opt.input>=0?inputs[opt.input].name:"";
-        const std::string outputName=opt.output>=0?outputs[opt.output].name:"";
+        std::string inputName=opt.input>=0?inputs[opt.input].name:"";
+        std::string outputName=opt.output>=0?outputs[opt.output].name:"";
+        std::string selectedSongFile=chosenSong.empty()
+             ?std::filesystem::u8path(opt.song).filename().u8string()
+             :std::filesystem::path(chosenSong).filename().u8string();
+        std::wstring displayTitle=hasHandoff?roomtone::desktop::wide(imported.title)
+             :roomtone::desktop::wide(selectedSongFile);
         Runtime rt(opt,std::move(song));
         if(hasHandoff){
             rt.session=std::move(imported);
@@ -402,9 +427,166 @@ int main(int argc,char** argv) {
             rt.interrupted.store(false);
             return true;
         };
-        if(!startDevice()){
-            ma_context_uninit(&context);
-            return 5;
+        if(!startDevice()&&!opt.gui){
+            ma_context_uninit(&context);return 5;
+        }
+        if(opt.gui){
+            using roomtone::desktop::Action;
+            using roomtone::desktop::Snapshot;
+            std::wstring notice=L"Start with wired headphones at low volume. F9 (focused window) toggles mic.";
+            auto safeStop=[&](){
+                rt.monitoring.store(false);rt.musicPlaying.store(false);
+                if(deviceActive){ma_device_uninit(&device);deviceActive=false;}
+            };
+            auto safeRestart=[&](){
+                rt.mixer.vocal.reset();
+                if(startDevice())notice=L"Audio ready. Voice MUTED, music PAUSED.";
+                else notice=L"Audio device unavailable. Check USB or select devices; monitoring muted.";
+            };
+            roomtone::desktop::Window window;
+            window.controller.snapshot=[&]()->Snapshot{
+                Snapshot view;
+                view.title=displayTitle.empty()?L"ROOMTONE / NATIVE KARAOKE":displayTitle;
+                view.positionSeconds=static_cast<unsigned>(rt.songPosition.load()/48000);
+                view.durationSeconds=static_cast<unsigned>(rt.mixer.songFrames()/48000);
+                view.playing=rt.musicPlaying.load();view.microphone=rt.monitoring.load();
+                view.repeat=rt.repeat.load();view.interrupted=rt.interrupted.load();
+                view.deviceActive=deviceActive;view.hasSong=rt.mixer.hasSong();
+                view.reverb=rt.wet.load();view.echo=rt.echo.load();view.music=rt.musicGain.load();
+                view.input=inputName.empty()?L"Windows default":roomtone::desktop::wide(inputName);
+                view.output=outputName.empty()?L"Windows default":roomtone::desktop::wide(outputName);
+                view.notice=notice;
+                if(hasHandoff&&!rt.session.lines.empty()){
+                    const auto ms=static_cast<std::uint32_t>(
+                        std::min<std::uint64_t>(rt.songPosition.load()/48,720000));
+                    const auto at=roomtone::lyricIndexAt(rt.session,ms);
+                    if(at==rt.session.lines.size()){
+                        view.current=L"Get ready...";
+                        view.next=roomtone::desktop::wide(rt.session.lines.front().text);
+                    }else{
+                        view.current=roomtone::desktop::wide(rt.session.lines[at].text);
+                        if(at>0)view.previous=roomtone::desktop::wide(rt.session.lines[at-1].text);
+                        if(at+1<rt.session.lines.size())
+                            view.next=roomtone::desktop::wide(rt.session.lines[at+1].text);
+                    }
+                }else view.current=L"Import a matching .rtk for synchronized lyrics";
+                return view;
+            };
+            window.controller.action=[&](Action action){
+                try{
+                    const bool ready=deviceActive&&!rt.interrupted.load();
+                    const auto level=[&](std::atomic<float>& target,float change,float maximum){
+                        const float current=target.load();
+                        target.store(std::clamp(std::round((current+change)*100.0f)/100.0f,0.0f,maximum));
+                    };
+                    switch(action){
+                    case Action::Mic:
+                        if(!ready){notice=L"Reconnect audio before enabling the microphone.";break;}
+                        if(!rt.monitoring.load()){
+                            if(MessageBoxW(window.hwnd,
+                               L"Enable microphone monitoring?\nBegin with wired headphones and very low volume.\n"
+                               L"Speakers can cause dangerous feedback. Use the physical QuadCast mute immediately.",
+                               L"ROOMTONE - microphone safety",MB_YESNO|MB_ICONWARNING|MB_DEFBUTTON2)!=IDYES)
+                               break;
+                            rt.monitoring.store(true);
+                            notice=L"MIC ON. Physically mute the QuadCast if feedback begins.";
+                        }else{rt.monitoring.store(false);notice=L"Microphone muted.";}
+                        break;
+                    case Action::Play:
+                        if(!ready||!rt.mixer.hasSong()){notice=L"Reconnect audio / load instrumental.";break;}
+                        if(rt.songPosition.load()>=rt.mixer.songFrames())rt.rewindRequest.store(true);
+                        rt.musicPlaying.store(!rt.musicPlaying.load());break;
+                    case Action::Restart:
+                        if(ready){rt.rewindRequest.store(true);rt.musicPlaying.store(true);}break;
+                    case Action::Back:case Action::Forward:
+                        if(ready&&rt.mixer.hasSong()){
+                            const auto current=static_cast<std::size_t>(rt.songPosition.load());
+                            rt.seekRequest.store(roomtone::parseSeekFrames(
+                                action==Action::Back?"-10":"+10",current,rt.mixer.songFrames()));
+                        }break;
+                    case Action::NextLine:
+                        if(ready&&hasHandoff&&!rt.session.lines.empty()){
+                            const auto ms=static_cast<std::uint32_t>(
+                                std::min<std::uint64_t>(rt.songPosition.load()/48,720000));
+                            const auto at=roomtone::lyricIndexAt(rt.session,ms);
+                            const auto next=at==rt.session.lines.size()?0:at+1;
+                            if(next<rt.session.lines.size()){
+                                const auto time=std::clamp<std::int64_t>(
+                                    static_cast<std::int64_t>(rt.session.lines[next].milliseconds)+rt.session.offsetMs,
+                                    0,static_cast<std::int64_t>(rt.mixer.songFrames()/48));
+                                rt.seekRequest.store(static_cast<std::uint64_t>(time)*48);
+                            }
+                        }break;
+                    case Action::Repeat:rt.repeat.store(!rt.repeat.load());break;
+                    case Action::ReverbDown:level(rt.wet,-0.02f,0.25f);break;
+                    case Action::ReverbUp:level(rt.wet,0.02f,0.25f);break;
+                    case Action::EchoDown:level(rt.echo,-0.02f,0.35f);break;
+                    case Action::EchoUp:level(rt.echo,0.02f,0.35f);break;
+                    case Action::MusicDown:level(rt.musicGain,-0.03f,0.5f);break;
+                    case Action::MusicUp:level(rt.musicGain,0.03f,0.5f);break;
+                    case Action::Reconnect:safeStop();safeRestart();break;
+                    case Action::ChooseSong:{
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        const auto chosen=chooseSongFile();
+                        if(chosen.empty()){notice=L"Song selection canceled; microphone and music muted.";break;}
+                        auto next=loadSong("",chosen);
+                        if(next.empty())throw std::runtime_error("No decoded song frames");
+                        safeStop();
+                        rt.seekRequest.store(std::numeric_limits<std::uint64_t>::max());
+                        rt.rewindRequest.store(false);
+                        rt.mixer.replaceSong(std::move(next));
+                        rt.songPosition.store(0);
+                        rt.session=roomtone::Handoff{};hasHandoff=false;
+                        rt.abLoop=false;rt.abStart=rt.abEnd=0;rt.repeat.store(false);
+                        selectedSongFile=std::filesystem::path(chosen).filename().u8string();
+                        displayTitle=roomtone::desktop::wide(selectedSongFile);
+                        safeRestart();
+                        notice=L"Song replaced; previous source-owned lyrics cleared. Import matching .rtk.";
+                        break;
+                    }
+                    case Action::ChooseSession:{
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        const auto path=chooseHandoffFile();
+                        if(path.empty()){notice=L"Session selection canceled; microphone and music muted.";break;}
+                        const auto loaded=roomtone::loadHandoff(std::filesystem::path(path));
+                        if(loaded.audioName!=selectedSongFile)
+                            throw std::runtime_error("Session filename must match selected original instrumental");
+                        safeStop();
+                        rt.session=loaded;hasHandoff=true;rt.repeat.store(loaded.loop);
+                        rt.abStart=std::min<std::size_t>(loaded.loopStartMs*48ULL,rt.mixer.songFrames());
+                        rt.abEnd=std::min<std::size_t>(loaded.loopEndMs*48ULL,rt.mixer.songFrames());
+                        rt.abLoop=loaded.loop&&rt.abEnd>rt.abStart+12000;
+                        rt.seekRequest.store(std::min<std::uint64_t>(loaded.startMs*48ULL,rt.mixer.songFrames()));
+                        displayTitle=roomtone::desktop::wide(loaded.title);
+                        safeRestart();
+                        notice=L"Matching local session imported. Voice MUTED; music PAUSED.";
+                        break;
+                    }
+                    case Action::ChooseDevices:{
+                        safeStop();
+                        ma_device_info *outs=nullptr,*ins=nullptr;
+                        ma_uint32 no=0,ni=0;
+                        if(ma_context_get_devices(&context,&outs,&no,&ins,&ni)!=MA_SUCCESS)
+                            throw std::runtime_error("Cannot enumerate devices");
+                        std::vector<std::wstring> inputLabels,outputLabels;
+                        for(ma_uint32 i=0;i<ni;++i)inputLabels.push_back(roomtone::desktop::wide(ins[i].name));
+                        for(ma_uint32 i=0;i<no;++i)outputLabels.push_back(roomtone::desktop::wide(outs[i].name));
+                        const auto choice=roomtone::desktop::selectDevices(inputLabels,outputLabels);
+                        if(choice){
+                            inputName=choice->first<0?"":ins[choice->first].name;
+                            outputName=choice->second<0?"":outs[choice->second].name;
+                        }
+                        safeRestart();break;
+                    }
+                    }
+                }catch(const std::exception& e){
+                    rt.monitoring.store(false);rt.musicPlaying.store(false);
+                    notice=L"Operation rejected: "+roomtone::desktop::wide(e.what())+L". Monitoring muted.";
+                }
+            };
+            const int result=window.run();
+            safeStop();ma_context_uninit(&context);
+            return result;
         }
         std::cout<<"\nRUNNING MIC MUTED + SONG PAUSED. Requested "<<opt.period<<" frames at 48000 Hz (NOT measured latency).\n"
                  <<"Predecoded backing frames: "<<rt.mixer.songFrames()<<"\n"
