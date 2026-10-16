@@ -219,6 +219,12 @@ static void callback(ma_device* device, void* output, const void* input, ma_uint
     if(!output||!rt)return;
     auto* out=static_cast<float*>(output);
     const auto* in=static_cast<const float*>(input);
+    // A rerouted/stopped driver must emit silence even if it delivers a final
+    // callback before the UI owner drains/uninitializes the old device.
+    if(rt->interrupted.load(std::memory_order_relaxed)){
+        std::fill_n(out,static_cast<std::size_t>(frames)*2,0.0f);
+        return;
+    }
     if(rt->rewindRequest.exchange(false,std::memory_order_relaxed))rt->mixer.rewind();
     constexpr auto kNoSeek=std::numeric_limits<std::uint64_t>::max();
     const auto seek=rt->seekRequest.exchange(kNoSeek,std::memory_order_relaxed);
@@ -616,9 +622,18 @@ int main(int argc,char** argv) {
                         rt.musicPlaying.store(!rt.musicPlaying.load());break;
                     case Action::Restart:
                         if(rt.mixer.hasSong()){
-                            rt.rewindRequest.store(true);
-                            if(ready)rt.musicPlaying.store(true);
-                            else{rt.songPosition.store(0);notice=L"Restart queued offline; reconnect stays muted and paused.";}
+                            // While offline, an older frozen seek must not override restart
+                            // on the first callback of the reconnected device.
+                            if(ready){
+                                rt.seekRequest.store(roomtone::recovery::NoSeek);
+                                rt.rewindRequest.store(true);
+                                rt.musicPlaying.store(true);
+                            }else{
+                                rt.rewindRequest.store(false);
+                                rt.seekRequest.store(0);
+                                rt.songPosition.store(0);
+                                notice=L"Restart queued offline; reconnect stays muted and paused.";
+                            }
                         }break;
                     case Action::Back:case Action::Forward:
                         if(rt.mixer.hasSong()){
