@@ -390,6 +390,7 @@ int main(int argc,char** argv) {
         }
         ma_device device{};
         bool deviceActive=false;
+        bool deviceTopologyDirty=false;
         std::wstring lastDeviceIssue;
         const auto startDevice=[&]()->bool{
             lastDeviceIssue.clear();
@@ -481,6 +482,41 @@ int main(int argc,char** argv) {
                     :lastDeviceIssue+L" Voice and music remain muted.";
             };
             roomtone::desktop::Window window;
+            window.controller.deviceChanged=[&]{deviceTopologyDirty=true;};
+            window.controller.maintenance=[&]{
+                // WASAPI notifications and WM_DEVICECHANGE only signal.
+                // Joining/uninitializing stays on this owner/control thread.
+                if(deviceActive&&rt.interrupted.load()){
+                    safeStop();rt.mixer.vocal.reset();
+                    notice=L"WASAPI interrupted. Position saved; reconnect explicitly (both channels muted).";
+                }
+                if(!deviceTopologyDirty)return;
+                deviceTopologyDirty=false;
+                ma_device_info *outs=nullptr,*ins=nullptr;
+                ma_uint32 no=0,ni=0;
+                if(ma_context_get_devices(&context,&outs,&no,&ins,&ni)!=MA_SUCCESS){
+                    rt.monitoring.store(false);rt.musicPlaying.store(false);
+                    if(deviceActive){rt.interrupted.store(true);safeStop();}
+                    notice=L"Windows device list unavailable. Reconnect explicitly; both channels muted.";
+                    return;
+                }
+                std::vector<std::string> captureNames,playbackNames;
+                for(ma_uint32 i=0;i<ni;++i)captureNames.emplace_back(ins[i].name);
+                for(ma_uint32 i=0;i<no;++i)playbackNames.emplace_back(outs[i].name);
+                const auto capture=roomtone::device_policy::resolve(inputName,captureNames);
+                const auto playback=roomtone::device_policy::resolve(outputName,playbackNames);
+                const bool missing=(capture.state==roomtone::device_policy::State::Missing||
+                    capture.state==roomtone::device_policy::State::Ambiguous||
+                    playback.state==roomtone::device_policy::State::Missing||
+                    playback.state==roomtone::device_policy::State::Ambiguous);
+                if(missing){
+                    rt.monitoring.store(false);rt.musicPlaying.store(false);
+                    if(deviceActive){rt.interrupted.store(true);safeStop();}
+                    notice=L"Named microphone/speaker missing or ambiguous after device change. No silent fallback. Select devices or reconnect.";
+                }else if(!deviceActive){
+                    notice=L"Devices visible again. Press Reconnect to reopen voice-MUTED and song-PAUSED.";
+                }
+            };
             window.controller.snapshot=[&]()->Snapshot{
                 Snapshot view;
                 view.title=displayTitle.empty()?L"ROOMTONE / NATIVE KARAOKE":displayTitle;
@@ -489,6 +525,7 @@ int main(int argc,char** argv) {
                 view.playing=rt.musicPlaying.load();view.microphone=rt.monitoring.load();
                 view.repeat=rt.repeat.load();view.interrupted=rt.interrupted.load();
                 view.deviceActive=deviceActive;view.hasSong=rt.mixer.hasSong();
+                view.hasLyrics=hasHandoff&&!rt.session.lines.empty();
                 view.reverb=rt.wet.load();view.echo=rt.echo.load();view.music=rt.musicGain.load();view.gain=rt.gain.load();
                 view.input=inputName.empty()?L"Windows default":roomtone::desktop::wide(inputName);
                 view.output=outputName.empty()?L"Windows default":roomtone::desktop::wide(outputName);
@@ -512,14 +549,17 @@ int main(int argc,char** argv) {
                 return view;
             };
             window.controller.seekSeconds=[&](unsigned seconds){
-                if(!deviceActive||rt.interrupted.load()||!rt.mixer.hasSong()){
-                    notice=L"Cannot seek: device unavailable or no local song.";return;
+                if(!rt.mixer.hasSong()){
+                    notice=L"Cannot seek without a loaded local song.";return;
                 }
                 const auto at=std::min<std::uint64_t>(
                     static_cast<std::uint64_t>(seconds)*48000ULL,rt.mixer.songFrames());
                 rt.rewindRequest.store(false);
                 rt.seekRequest.store(at);
-                notice=L"Song seek requested. Native music remains under this WASAPI engine.";
+                if(!deviceActive||rt.interrupted.load())rt.songPosition.store(at);
+                notice=(!deviceActive||rt.interrupted.load())
+                    ?L"Offline seek saved; reconnect stays voice-MUTED and music-PAUSED."
+                    :L"Song seek queued in the original WASAPI engine.";
             };
             window.controller.action=[&](Action action){
                 try{
@@ -550,24 +590,31 @@ int main(int argc,char** argv) {
                         if(rt.songPosition.load()>=rt.mixer.songFrames())rt.rewindRequest.store(true);
                         rt.musicPlaying.store(!rt.musicPlaying.load());break;
                     case Action::Restart:
-                        if(ready){rt.rewindRequest.store(true);rt.musicPlaying.store(true);}break;
-                    case Action::Back:case Action::Forward:
-                        if(ready&&rt.mixer.hasSong()){
-                            const auto current=static_cast<std::size_t>(rt.songPosition.load());
-                            rt.seekRequest.store(roomtone::parseSeekFrames(
-                                action==Action::Back?"-10":"+10",current,rt.mixer.songFrames()));
+                        if(rt.mixer.hasSong()){
+                            rt.rewindRequest.store(true);
+                            if(ready)rt.musicPlaying.store(true);
+                            else{rt.songPosition.store(0);notice=L"Restart queued offline; reconnect stays muted and paused.";}
                         }break;
-                    case Action::NextLine:
-                        if(ready&&hasHandoff&&!rt.session.lines.empty()){
+                    case Action::Back:case Action::Forward:
+                        if(rt.mixer.hasSong()){
+                            const auto current=static_cast<std::size_t>(rt.songPosition.load());
+                            const auto destination=roomtone::parseSeekFrames(
+                                action==Action::Back?"-10":"+10",current,rt.mixer.songFrames());
+                            rt.rewindRequest.store(false);rt.seekRequest.store(destination);
+                            if(!ready)rt.songPosition.store(destination);
+                        }break;
+                    case Action::NextLine:case Action::PreviousLine:
+                        if(rt.mixer.hasSong()&&hasHandoff){
                             const auto ms=static_cast<std::uint32_t>(
                                 std::min<std::uint64_t>(rt.songPosition.load()/48,720000));
-                            const auto at=roomtone::lyricIndexAt(rt.session,ms);
-                            const auto next=at==rt.session.lines.size()?0:at+1;
-                            if(next<rt.session.lines.size()){
-                                const auto time=std::clamp<std::int64_t>(
-                                    static_cast<std::int64_t>(rt.session.lines[next].milliseconds)+rt.session.offsetMs,
-                                    0,static_cast<std::int64_t>(rt.mixer.songFrames()/48));
-                                rt.seekRequest.store(static_cast<std::uint64_t>(time)*48);
+                            const auto limit=static_cast<std::uint32_t>(
+                                std::min<std::uint64_t>(rt.mixer.songFrames()/48,720000));
+                            const auto target=roomtone::lyricJumpMs(
+                                rt.session,ms,action==Action::NextLine,limit);
+                            if(target){
+                                rt.rewindRequest.store(false);
+                                rt.seekRequest.store(static_cast<std::uint64_t>(*target)*48);
+                                if(!ready)rt.songPosition.store(static_cast<std::uint64_t>(*target)*48);
                             }
                         }break;
                     case Action::Repeat:rt.repeat.store(!rt.repeat.load());break;
