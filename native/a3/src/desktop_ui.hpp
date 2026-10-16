@@ -4,6 +4,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <commctrl.h>
 #include <algorithm>
 #include <functional>
 #include <string>
@@ -39,6 +40,7 @@ struct Snapshot {
 struct Controller {
  std::function<Snapshot()> snapshot;
  std::function<void(Action)> action;
+ std::function<void(unsigned)> seekSeconds; // only on owner UI thread
 };
 inline HFONT font(int size,bool bold=false) {
  return CreateFontW(-size,0,0,0,bold?FW_SEMIBOLD:FW_NORMAL,FALSE,FALSE,FALSE,
@@ -54,11 +56,12 @@ inline std::wstring clock(unsigned seconds) {
 struct Window {
  Controller controller;
  HWND hwnd=nullptr,title=nullptr,previous=nullptr,current=nullptr,next=nullptr,
-      status=nullptr,device=nullptr,notice=nullptr;
+      status=nullptr,device=nullptr,notice=nullptr,seekLabel=nullptr,seekBar=nullptr;
  HWND buttons[20]{};
  HFONT minorFont=nullptr,regular=nullptr,large=nullptr,heading=nullptr;
  bool ready=false;
  bool syntheticTest=false;
+ bool trackingSeek=false;
  void applyFont(HWND h,HFONT f){if(h)SendMessageW(h,WM_SETFONT,reinterpret_cast<WPARAM>(f),TRUE);}
  HWND label(const wchar_t* value,DWORD flags,HFONT f) {
   auto h=CreateWindowExW(0,L"STATIC",value,WS_CHILD|WS_VISIBLE|flags,0,0,100,25,
@@ -79,19 +82,21 @@ struct Window {
   MoveWindow(previous,pad,70,w-2*pad,34,TRUE);
   MoveWindow(current,pad,109,w-2*pad,96,TRUE);
   MoveWindow(next,pad,208,w-2*pad,35,TRUE);
-  MoveWindow(status,pad,256,w-2*pad,44,TRUE);
+  MoveWindow(seekLabel,pad,245,w-2*pad,22,TRUE);
+  MoveWindow(seekBar,pad,268,w-2*pad,32,TRUE);
+  MoveWindow(status,pad,305,w-2*pad,44,TRUE);
   const int gap=9,columns=4,bw=(w-2*pad-gap*(columns-1))/columns;
   for(int i=0;i<16;++i){
-   const int x=pad+(i%columns)*(bw+gap),y=308+(i/columns)*48;
+   const int x=pad+(i%columns)*(bw+gap),y=355+(i/columns)*48;
    MoveWindow(buttons[i],x,y,bw,40,TRUE);
   }
-  MoveWindow(buttons[16],pad,503,w-2*pad,40,TRUE);
-  MoveWindow(buttons[17],pad,550,w-2*pad,44,TRUE);
+  MoveWindow(buttons[16],pad,550,w-2*pad,40,TRUE);
+  MoveWindow(buttons[17],pad,597,w-2*pad,44,TRUE);
   const int half=(w-2*pad-gap)/2;
-  MoveWindow(buttons[18],pad,602,half,40,TRUE);
-  MoveWindow(buttons[19],pad+half+gap,602,half,40,TRUE);
-  MoveWindow(device,pad,655,w-2*pad,38,TRUE);
-  MoveWindow(notice,pad,704,w-2*pad,44,TRUE);
+  MoveWindow(buttons[18],pad,648,half,40,TRUE);
+  MoveWindow(buttons[19],pad+half+gap,648,half,40,TRUE);
+  MoveWindow(device,pad,699,w-2*pad,38,TRUE);
+  MoveWindow(notice,pad,746,w-2*pad,60,TRUE);
  }
  void render() {
   if(!controller.snapshot)return;
@@ -100,6 +105,13 @@ struct Window {
   setText(previous,s.previous.empty()?L" ":s.previous);
   setText(current,s.current.empty()?L"No synchronized lyrics loaded":s.current);
   setText(next,s.next.empty()?L" ":s.next);
+  if(seekBar){
+   const int limit=static_cast<int>(std::min<unsigned>(s.durationSeconds,720));
+   SendMessageW(seekBar,TBM_SETRANGEMAX,FALSE,limit);
+   if(!trackingSeek)
+    SendMessageW(seekBar,TBM_SETPOS,TRUE,std::min<unsigned>(s.positionSeconds,limit));
+   EnableWindow(seekBar,s.hasSong&&s.deviceActive&&!s.interrupted);
+  }
   auto state=s.interrupted?L"INTERRUPTED":s.deviceActive?L"READY":L"DEVICE STOPPED";
   setText(status,clock(s.positionSeconds)+L" / "+clock(s.durationSeconds)
       +L"  |  "+state+L"  |  Voice "+(s.microphone?L"ON":L"MUTED")
@@ -143,6 +155,9 @@ struct Window {
     self->previous=self->label(L"",SS_CENTER,self->minorFont);
     self->current=self->label(L"",SS_CENTER|SS_CENTERIMAGE,self->large);
     self->next=self->label(L"",SS_CENTER,self->minorFont);
+    self->seekLabel=self->label(L"Song position | focus slider, use arrow keys / Home / End to seek",SS_LEFT,self->minorFont);
+    self->seekBar=CreateWindowExW(0,TRACKBAR_CLASSW,L"Song position",WS_CHILD|WS_VISIBLE|WS_TABSTOP|TBS_HORZ|TBS_NOTICKS,
+        0,0,100,30,h,nullptr,GetModuleHandleW(nullptr),nullptr);
     self->status=self->label(L"Voice MUTED · Music PAUSED",SS_CENTER,self->regular);
     const std::pair<Action,const wchar_t*> labels[]={
      {Play,L"Play / Pause"},{Mic,L"Enable voice"},{Back,L"-10 seconds"},
@@ -161,6 +176,8 @@ struct Window {
     SetTimer(h,1,120,nullptr);
     self->ready=true;self->render();
     if(self->syntheticTest){
+        SendMessageW(self->seekBar,TBM_SETPOS,TRUE,43);
+        PostMessageW(h,WM_HSCROLL,MAKEWPARAM(TB_ENDTRACK,0),reinterpret_cast<LPARAM>(self->seekBar));
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::Play,BN_CLICKED),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::EmergencyMute,BN_CLICKED),0);
         PostMessageW(h,WM_CLOSE,0,0);
@@ -169,10 +186,25 @@ struct Window {
    }
    case WM_GETMINMAXINFO:{
      auto* info=reinterpret_cast<MINMAXINFO*>(l);
-     info->ptMinTrackSize.x=620;info->ptMinTrackSize.y=842;
+     info->ptMinTrackSize.x=620;info->ptMinTrackSize.y=940;
      return 0;
    }
    case WM_SIZE:self->layout();return 0;
+   case WM_HSCROLL:
+    if(reinterpret_cast<HWND>(l)==self->seekBar){
+     const auto part=LOWORD(w);
+     if(part==TB_THUMBTRACK){self->trackingSeek=true;return 0;}
+     if(part==TB_ENDTRACK||part==TB_THUMBPOSITION||part==TB_LINEUP||
+        part==TB_LINEDOWN||part==TB_PAGEUP||part==TB_PAGEDOWN||
+        part==TB_TOP||part==TB_BOTTOM){
+        const auto position=static_cast<unsigned>(SendMessageW(self->seekBar,TBM_GETPOS,0,0));
+        self->trackingSeek=false;
+        if(self->controller.seekSeconds)self->controller.seekSeconds(position);
+        self->render();
+     }
+     return 0;
+    }
+    break;
    case WM_TIMER:if(w==1)self->render();return 0;
    case WM_KEYDOWN:
     // Local to the focused karaoke window; never intercept other apps' F keys.
@@ -194,6 +226,8 @@ struct Window {
   return DefWindowProcW(h,message,w,l);
  }
  int run(){
+  INITCOMMONCONTROLSEX common{};common.dwSize=sizeof(common);common.dwICC=ICC_BAR_CLASSES;
+  if(!InitCommonControlsEx(&common))throw std::runtime_error("Windows seek slider unavailable");
   const wchar_t* name=L"ROOMTONE Native Karaoke A3";
   WNDCLASSEXW cls{};
   cls.cbSize=sizeof(cls);cls.hInstance=GetModuleHandleW(nullptr);
@@ -202,7 +236,7 @@ struct Window {
   cls.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);
   RegisterClassExW(&cls);
   hwnd=CreateWindowExW(0,name,L"ROOMTONE | Native Karaoke",
-       WS_OVERLAPPEDWINDOW|WS_VISIBLE,CW_USEDEFAULT,CW_USEDEFAULT,920,870,
+       WS_OVERLAPPEDWINDOW|WS_VISIBLE,CW_USEDEFAULT,CW_USEDEFAULT,920,960,
        nullptr,nullptr,cls.hInstance,this);
   if(!hwnd)throw std::runtime_error("Unable to open Windows native karaoke interface");
   MSG m{};
@@ -226,7 +260,8 @@ struct DeviceChooser{
  HFONT text=nullptr;
  const std::vector<std::wstring>* inputs=nullptr,*outputs=nullptr;
  int inputChoice=-1,outputChoice=-1;
- bool approved=false;
+ HWND owner=nullptr;
+ bool approved=false,syntheticCancel=false;
  static LRESULT CALLBACK proc(HWND h,UINT msg,WPARAM w,LPARAM l){
   auto* self=reinterpret_cast<DeviceChooser*>(GetWindowLongPtrW(h,GWLP_USERDATA));
   if(msg==WM_NCCREATE){
@@ -255,6 +290,7 @@ struct DeviceChooser{
    SendMessageW(self->output,CB_SETCURSEL,0,0);
    create(L"BUTTON",L"Use devices",BS_DEFPUSHBUTTON|WS_TABSTOP,205,200,135,38,101);
    create(L"BUTTON",L"Cancel",BS_PUSHBUTTON|WS_TABSTOP,350,200,130,38,102);
+   if(self->syntheticCancel)PostMessageW(h,WM_CLOSE,0,0);
    return 0;
   }
   if(msg==WM_COMMAND){
@@ -266,7 +302,7 @@ struct DeviceChooser{
    if(LOWORD(w)==102){DestroyWindow(h);return 0;}
   }
   if(msg==WM_CLOSE){DestroyWindow(h);return 0;}
-  if(msg==WM_DESTROY){DeleteObject(self->text);PostQuitMessage(0);return 0;}
+  if(msg==WM_DESTROY){DeleteObject(self->text);self->hwnd=nullptr;return 0;}
   return DefWindowProcW(h,msg,w,l);
  }
  std::optional<std::pair<int,int>> run(){
@@ -274,20 +310,32 @@ struct DeviceChooser{
   cls.hInstance=GetModuleHandleW(nullptr);cls.lpszClassName=L"ROOMTONE Device Selection";
   cls.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);cls.hCursor=LoadCursorW(nullptr,MAKEINTRESOURCEW(32512));
   RegisterClassExW(&cls);
+  const bool disableOwner=owner&&IsWindow(owner)&&IsWindowEnabled(owner);
+  if(disableOwner)EnableWindow(owner,FALSE);
   hwnd=CreateWindowExW(WS_EX_DLGMODALFRAME,cls.lpszClassName,L"ROOMTONE | Audio devices",
       WS_CAPTION|WS_SYSMENU|WS_VISIBLE,CW_USEDEFAULT,CW_USEDEFAULT,520,290,
-      nullptr,nullptr,cls.hInstance,this);
-  if(!hwnd)throw std::runtime_error("Windows device selector failed to open");
+      owner,nullptr,cls.hInstance,this);
+  if(!hwnd){
+   if(disableOwner)EnableWindow(owner,TRUE);
+   throw std::runtime_error("Windows device selector failed to open");
+  }
   MSG msg{};
-  while(GetMessageW(&msg,nullptr,0,0)>0)
+  while(hwnd&&IsWindow(hwnd)){
+   const auto result=GetMessageW(&msg,nullptr,0,0);
+   if(result<=0){
+    if(result==0)PostQuitMessage(static_cast<int>(msg.wParam));
+    break;
+   }
    if(!IsDialogMessageW(hwnd,&msg)){TranslateMessage(&msg);DispatchMessageW(&msg);}
+  }
+  if(disableOwner&&IsWindow(owner)){EnableWindow(owner,TRUE);SetForegroundWindow(owner);}
   if(!approved)return std::nullopt;
   return std::make_pair(inputChoice,outputChoice);
  }
 };
 inline std::optional<std::pair<int,int>> selectDevices(
- const std::vector<std::wstring>& inputs,const std::vector<std::wstring>& outputs){
- DeviceChooser picker;picker.inputs=&inputs;picker.outputs=&outputs;
+ const std::vector<std::wstring>& inputs,const std::vector<std::wstring>& outputs,HWND owner=nullptr){
+ DeviceChooser picker;picker.inputs=&inputs;picker.outputs=&outputs;picker.owner=owner;
  return picker.run();
 }
 }
