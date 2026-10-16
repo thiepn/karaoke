@@ -47,8 +47,15 @@ inline HFONT font(int size,bool bold=false) {
                     DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,
                     CLEARTYPE_QUALITY,DEFAULT_PITCH|FF_DONTCARE,L"Segoe UI");
 }
+// Update only on state change: periodic lyric refreshes must not flood native
+// accessibility clients with duplicate text-change notifications.
 inline void setText(HWND handle,const std::wstring& value){
- if(handle)SetWindowTextW(handle,value.c_str());
+ if(!handle)return;
+ const int length=GetWindowTextLengthW(handle);
+ std::wstring previous(static_cast<std::size_t>(std::max(0,length))+1,L'\0');
+ const int read=GetWindowTextW(handle,previous.data(),static_cast<int>(previous.size()));
+ previous.resize(static_cast<std::size_t>(std::max(0,read)));
+ if(previous!=value)SetWindowTextW(handle,value.c_str());
 }
 inline std::wstring clock(unsigned seconds) {
  return std::to_wstring(seconds/60)+L":"+(seconds%60<10?L"0":L"")+std::to_wstring(seconds%60);
@@ -311,6 +318,7 @@ struct DeviceChooser{
   cls.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);cls.hCursor=LoadCursorW(nullptr,MAKEINTRESOURCEW(32512));
   RegisterClassExW(&cls);
   const bool disableOwner=owner&&IsWindow(owner)&&IsWindowEnabled(owner);
+  const HWND priorFocus=disableOwner?GetFocus():nullptr;
   if(disableOwner)EnableWindow(owner,FALSE);
   hwnd=CreateWindowExW(WS_EX_DLGMODALFRAME,cls.lpszClassName,L"ROOMTONE | Audio devices",
       WS_CAPTION|WS_SYSMENU|WS_VISIBLE,CW_USEDEFAULT,CW_USEDEFAULT,520,290,
@@ -328,7 +336,11 @@ struct DeviceChooser{
    }
    if(!IsDialogMessageW(hwnd,&msg)){TranslateMessage(&msg);DispatchMessageW(&msg);}
   }
-  if(disableOwner&&IsWindow(owner)){EnableWindow(owner,TRUE);SetForegroundWindow(owner);}
+  if(disableOwner&&IsWindow(owner)){
+   EnableWindow(owner,TRUE);SetForegroundWindow(owner);
+   if(priorFocus&&IsWindow(priorFocus)&&(priorFocus==owner||IsChild(owner,priorFocus)))
+    SetFocus(priorFocus);
+  }
   if(!approved)return std::nullopt;
   return std::make_pair(inputChoice,outputChoice);
  }

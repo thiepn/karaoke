@@ -390,10 +390,15 @@ int main(int argc,char** argv) {
         }
         ma_device device{};
         bool deviceActive=false;
+        std::wstring lastDeviceIssue;
         const auto startDevice=[&]()->bool{
+            lastDeviceIssue.clear();
+            // Device output always starts in an explicitly muted state.
+            rt.monitoring.store(false);rt.musicPlaying.store(false);
             ma_device_info *newOutputs=nullptr,*newInputs=nullptr;
             ma_uint32 newOutCount=0,newInCount=0;
             if(ma_context_get_devices(&context,&newOutputs,&newOutCount,&newInputs,&newInCount)!=MA_SUCCESS){
+                lastDeviceIssue=L"Windows WASAPI enumeration failed. Reconnect USB device or reopen this app.";
                 std::cout<<"Cannot enumerate WASAPI devices; reconnect again later.\n";return false;
             }
             std::vector<std::string> captures,playbacks;
@@ -403,6 +408,15 @@ int main(int argc,char** argv) {
             const auto rendered=roomtone::device_policy::resolve(outputName,playbacks);
             if((!inputName.empty()&&captured.state!=roomtone::device_policy::State::Unique)||
                (!outputName.empty()&&rendered.state!=roomtone::device_policy::State::Unique)){
+                const auto failure=[](roomtone::device_policy::State state,const wchar_t* role)->std::wstring{
+                    if(state==roomtone::device_policy::State::Missing)
+                        return std::wstring(role)+L" was disconnected or renamed.";
+                    if(state==roomtone::device_policy::State::Ambiguous)
+                        return std::wstring(role)+L" name is duplicated; choose a unique device.";
+                    return {};
+                };
+                lastDeviceIssue=failure(captured.state,L"Microphone ")+L" "+failure(rendered.state,L"Speaker ");
+                if(lastDeviceIssue.empty())lastDeviceIssue=L"Selected device missing or ambiguous.";
                 std::cout<<"Selected device is missing or ambiguous. Audio remains muted. Reconnect it or select devices again.\n";
                 return false;
             }
@@ -419,15 +433,27 @@ int main(int argc,char** argv) {
             config.dataCallback=callback;
             config.notificationCallback=onNotification;
             if(ma_device_init(&context,&config,&device)!=MA_SUCCESS){
+                lastDeviceIssue=L"WASAPI could not initialize capture/playback. Check USB and 48 kHz device setup.";
                 std::cout<<"WASAPI init failed; try reconnect or a larger --period value.\n";
                 return false;
             }
+            // Clear an OLD interruption before starting, not afterward.
+            // Otherwise a fresh stopped/rerouted notification during startup
+            // could be accidentally masked and re-enable unsafe monitoring.
+            rt.interrupted.store(false);
             if(ma_device_start(&device)!=MA_SUCCESS){
+                rt.interrupted.store(true);
                 ma_device_uninit(&device);
+                lastDeviceIssue=L"WASAPI failed to start. Device may be busy or unavailable.";
                 std::cout<<"WASAPI start failed; driver may be unavailable.\n";return false;
             }
             deviceActive=true;
-            rt.interrupted.store(false);
+            if(rt.interrupted.load()){
+                rt.monitoring.store(false);rt.musicPlaying.store(false);
+                ma_device_uninit(&device);deviceActive=false;
+                lastDeviceIssue=L"Audio was interrupted during device startup. Reconnect only after checking Windows sound.";
+                return false;
+            }
             return true;
         };
         if(!startDevice()&&!opt.gui){
@@ -436,7 +462,9 @@ int main(int argc,char** argv) {
         if(opt.gui){
             using roomtone::desktop::Action;
             using roomtone::desktop::Snapshot;
-            std::wstring notice=L"Start with wired headphones at low volume. F9 (focused window) toggles mic.";
+            std::wstring notice=lastDeviceIssue.empty()
+                ?L"Start with wired headphones at low volume. F9 (focused window) toggles mic."
+                :lastDeviceIssue+L" Voice and music muted.";
             auto safeStop=[&](){
                 rt.monitoring.store(false);rt.musicPlaying.store(false);
                 if(deviceActive){ma_device_uninit(&device);deviceActive=false;}
@@ -447,8 +475,10 @@ int main(int argc,char** argv) {
             };
             auto safeRestart=[&](){
                 rt.mixer.vocal.reset();
-                if(startDevice())notice=L"Audio ready. Voice MUTED, music PAUSED.";
-                else notice=L"Audio device unavailable. Check USB or select devices; monitoring muted.";
+                if(startDevice())notice=L"Audio ready. Voice MUTED, music PAUSED. Press Play when ready.";
+                else notice=lastDeviceIssue.empty()
+                    ?L"Audio unavailable. Voice and music remain muted."
+                    :lastDeviceIssue+L" Voice and music remain muted.";
             };
             roomtone::desktop::Window window;
             window.controller.snapshot=[&]()->Snapshot{
