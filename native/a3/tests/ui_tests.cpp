@@ -5,7 +5,7 @@ int main(){
 #ifdef _WIN32
  try{
   roomtone::desktop::Window window;
-  unsigned snapshots=0,playEvents=0;
+  unsigned snapshots=0,playEvents=0,muteEvents=0;
   window.syntheticTest=true;
   window.controller.snapshot=[&]{
    ++snapshots;
@@ -18,11 +18,12 @@ int main(){
   };
   window.controller.action=[&](roomtone::desktop::Action action){
    if(action==roomtone::desktop::Play)++playEvents;
+   if(action==roomtone::desktop::EmergencyMute)++muteEvents;
   };
   const int result=window.run();
-  if(result!=0||snapshots==0||playEvents!=1)
+  if(result!=0||snapshots==0||playEvents!=1||muteEvents!=1)
    throw std::runtime_error("in-process control message / UI lifetime");
-  if(roomtone::desktop::wide("Nacht \xC3\xBCber")!=L"Nacht \xFC""ber")
+  if(roomtone::desktop::wide("Nacht \xC3\xBC""ber")!=L"Nacht \xFC""ber")
    throw std::runtime_error("UTF-8 lyric display decoding");
   std::cout<<"PASS Windows synthetic native lyric surface, button event, UTF-8 and close lifecycle. No WASAPI device opened.\n";
   return 0;

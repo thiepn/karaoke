@@ -156,6 +156,7 @@ struct Window {
     self->ready=true;self->render();
     if(self->syntheticTest){
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::Play,BN_CLICKED),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::EmergencyMute,BN_CLICKED),0);
         PostMessageW(h,WM_CLOSE,0,0);
     }
     return 0;
