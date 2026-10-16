@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
+#include <filesystem>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -113,7 +114,7 @@ inline Handoff parseHandoff(const std::string& data){
   throw std::invalid_argument("invalid loop interval");
  return h;
 }
-inline Handoff loadHandoff(const std::string& path){
+inline Handoff loadHandoff(const std::filesystem::path& path){
  std::ifstream file(path,std::ios::binary|std::ios::ate);
  if(!file)throw std::runtime_error("cannot open local handoff file");
  const auto size=file.tellg();
@@ -124,6 +125,7 @@ inline Handoff loadHandoff(const std::string& path){
   throw std::runtime_error("cannot read session file");
  return parseHandoff(data);
 }
+inline Handoff loadHandoff(const std::string& path){return loadHandoff(std::filesystem::u8path(path));}
 inline std::size_t lyricIndexAt(const Handoff& h,std::uint32_t positionMs){
  if(h.lines.empty())return h.lines.size();
  const std::int64_t adjusted=static_cast<std::int64_t>(positionMs)-h.offsetMs;

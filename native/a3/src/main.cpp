@@ -5,12 +5,14 @@
 #include "miniaudio.h"
 #include "karaoke_mix.hpp"
 #include "transport.hpp"
+#include "handoff.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <sstream>
 #include <utility>
 #include <vector>
 #include <limits>
+#include <filesystem>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -32,8 +34,8 @@ struct Options {
     float gain = 0.18f;
     float echo=0.12f,feedback=0.15f,musicGain=0.2f;
     unsigned echoMs=280;
-    std::string song;
-    bool list = false,probeSong=false,pickSong=false,guided=false;
+    std::string song,handoffFile;
+    bool list = false,probeSong=false,pickSong=false,guided=false,probeHandoff=false;
 };
 static int readInteger(const std::string& s) {
     std::size_t count=0;
@@ -55,6 +57,7 @@ static Options parse(int argc,char** argv) {
         if(key=="--probe-song"){opt.probeSong=true;continue;}
         if(key=="--pick-song"){opt.pickSong=true;continue;}
         if(key=="--setup"){opt.guided=true;continue;}
+        if(key=="--probe-handoff"){opt.probeHandoff=true;continue;}
         if(key=="--help"||key=="-h"){
             std::cout<<"ROOMTONE A3 Windows WASAPI proof-of-concept\n"
                      <<"  --list  list device indices (0-based)\n"
@@ -65,6 +68,8 @@ static Options parse(int argc,char** argv) {
                      <<"  --song PATH  local MP3/WAV/FLAC instrumental (12-minute limit)\n"
                      <<"  --probe-song  decode local track without opening devices\n"
                      <<"  --pick-song  Windows file chooser (Unicode paths)\n"
+                     <<"  --handoff PATH  import offline browser lyrics/position (.rtk)\n"
+                     <<"  --probe-handoff  validate .rtk WITHOUT opening devices\n"
                      <<"  --setup  guided mic/speaker device selection\n"
                      <<"  --echo 0..0.35 --feedback 0..0.35 --echo-ms 80..550\n"
                      <<"  --music 0..0.50  backing track volume\n"
@@ -81,6 +86,7 @@ static Options parse(int argc,char** argv) {
         else if(key=="--wet") opt.wet=readFloat(value);
         else if(key=="--gain") opt.gain=readFloat(value);
         else if(key=="--song") opt.song=value;
+        else if(key=="--handoff") opt.handoffFile=value;
         else if(key=="--echo") opt.echo=readFloat(value);
         else if(key=="--feedback") opt.feedback=readFloat(value);
         else if(key=="--echo-ms") {const int n=readInteger(value);if(n<0)throw std::invalid_argument("negative echo-ms");opt.echoMs=static_cast<unsigned>(n);}
@@ -94,6 +100,7 @@ static Options parse(int argc,char** argv) {
        opt.echo<0||opt.echo>0.35f||opt.feedback<0||opt.feedback>0.35f||
        opt.echoMs<80||opt.echoMs>550||opt.musicGain<0||opt.musicGain>0.50f)
         throw std::invalid_argument("audio levels outside safe test range");
+    if(opt.probeHandoff&&opt.handoffFile.empty())throw std::invalid_argument("--probe-handoff needs --handoff PATH");
     if(opt.probeSong&&(opt.song.empty()||opt.pickSong||opt.guided))
         throw std::invalid_argument("--probe-song needs --song PATH without --setup/--pick-song");
     return opt;
@@ -170,6 +177,9 @@ struct Runtime {
     std::atomic<float> wet,gain,echo,feedback,musicGain;
     std::atomic<unsigned> echoMs;
     std::atomic<std::uint64_t> songPosition{0};
+    roomtone::Handoff session;
+    bool abLoop=false;
+    std::size_t abStart=0,abEnd=0;
 };
 // On driver stop/reroute, fail closed. Never restart/uninit a device from
 // a driver callback; the user can explicitly request reconnect on CLI thread.
@@ -200,7 +210,10 @@ static void callback(ma_device* device, void* output, const void* input, ma_uint
     const bool play=rt->musicPlaying.load(std::memory_order_relaxed);
     const float level=rt->musicGain.load(std::memory_order_relaxed);
     for(ma_uint32 i=0;i<frames;++i) {
-        if(play&&rt->repeat.load(std::memory_order_relaxed)&&rt->mixer.songEnded())rt->mixer.rewind();
+        if(play&&rt->repeat.load(std::memory_order_relaxed)){
+            if(rt->abLoop&&rt->mixer.position()>=rt->abEnd)rt->mixer.seekFrames(rt->abStart);
+            else if(rt->mixer.songEnded())rt->mixer.rewind();
+        }
         const auto result=rt->mixer.render(in?in[i]:0.0f,monitor,play,level);
         out[i*2]=result.left;out[i*2+1]=result.right;
     }
@@ -231,6 +244,12 @@ int main(int argc,char** argv) {
     try {
         Options opt=parse(argc,argv);
         if(argc==1)opt.guided=true; // Double-click opens guided setup.
+        if(opt.probeHandoff){
+            const auto session=roomtone::loadHandoff(opt.handoffFile);
+            std::cout<<"OFFLINE_SESSION_OK audio="<<session.audioName<<" lyrics="<<session.lines.size()
+                     <<" start-ms="<<session.startMs<<"; NO audio devices opened.\n";
+            return 0;
+        }
         std::wstring chosenSong;
         if(!opt.list&&!opt.probeSong&&(opt.pickSong||(opt.guided&&opt.song.empty()))) {
             chosenSong=chooseSongFile();
@@ -239,7 +258,19 @@ int main(int argc,char** argv) {
                 return 0;
             }
         }
-        // All decode happens before starting the WASAPI stream.
+        roomtone::Handoff imported;
+        bool hasHandoff=false;
+        if(!opt.handoffFile.empty()&&!opt.list&&!opt.probeSong){
+            imported=roomtone::loadHandoff(opt.handoffFile);hasHandoff=true;
+            if(opt.song.empty()&&chosenSong.empty())
+                throw std::invalid_argument("--handoff requires the matching --song PATH or --pick-song");
+            const auto filename=chosenSong.empty()
+              ?std::filesystem::u8path(opt.song).filename().u8string()
+              :std::filesystem::path(chosenSong).filename().u8string();
+            if(filename!=imported.audioName)
+                throw std::invalid_argument("Chosen local instrumental filename does not match the handoff");
+        }
+        // Decode before WASAPI; .rtk never contains audio bytes or disk path.
         auto song=opt.list?std::vector<float>{}:loadSong(opt.song,chosenSong);
         if(opt.probeSong){
             std::cout<<"DECODED_LOCAL_FRAMES "<<song.size()/2<<" AT_48000_STEREO; no audio device opened.\n";
@@ -283,6 +314,16 @@ int main(int argc,char** argv) {
         const std::string inputName=opt.input>=0?inputs[opt.input].name:"";
         const std::string outputName=opt.output>=0?outputs[opt.output].name:"";
         Runtime rt(opt,std::move(song));
+        if(hasHandoff){
+            rt.session=std::move(imported);
+            rt.seekRequest.store(std::min<std::uint64_t>(rt.session.startMs*48ULL,rt.mixer.songFrames()));
+            rt.repeat.store(rt.session.loop);
+            if(rt.session.loop){
+                rt.abStart=std::min<std::size_t>(rt.session.loopStartMs*48ULL,rt.mixer.songFrames());
+                rt.abEnd=std::min<std::size_t>(rt.session.loopEndMs*48ULL,rt.mixer.songFrames());
+                rt.abLoop=rt.abEnd>rt.abStart+12000;
+            }
+        }
         ma_device device{};
         bool deviceActive=false;
         const auto startDevice=[&]()->bool{
@@ -338,7 +379,7 @@ int main(int argc,char** argv) {
                  <<"HEADPHONES FIRST; NO acoustic feedback detection. Physical microphone mute is fastest.\n"
                  <<"Commands m, p, r, open, load PATH, seek SECONDS (+/- relative),\n"
                  <<"loop on/off, reconnect,\n"
-                 <<"open or load PATH to replace song, status, live effect controls, q.\n";
+                 <<"open/load, lyrics, next-line (from handoff), status, live effects, q.\n";
         std::string command;
         while(std::getline(std::cin,command)){
             try {
@@ -367,6 +408,7 @@ int main(int argc,char** argv) {
                     rt.seekRequest.store(std::numeric_limits<std::uint64_t>::max());
                     rt.rewindRequest.store(false);
                     rt.mixer.replaceSong(std::move(next));
+                    rt.session=roomtone::Handoff{};rt.abLoop=false;rt.repeat.store(false);hasHandoff=false;
                     rt.mixer.vocal.reset();
                     rt.songPosition.store(0);
                     if(startDevice())std::cout<<"New song loaded: MIC MUTED + SONG PAUSED. Press p to play.\n";
@@ -414,6 +456,29 @@ int main(int argc,char** argv) {
                     if(!rt.mixer.hasSong()){std::cout<<"No song loaded\n";continue;}
                     rt.rewindRequest.store(true);rt.musicPlaying.store(true);
                     std::cout<<"SONG RESTART REQUESTED\n";
+                }else if(op=="lyrics"||op=="next-line"){
+                    if(!hasHandoff||rt.session.lines.empty()){
+                        std::cout<<"No imported timed lyrics. Choose --handoff session.rtk\n";continue;
+                    }
+                    const auto ms=static_cast<std::uint32_t>(
+                        std::min<std::uint64_t>(rt.songPosition.load()/48,720000));
+                    const auto index=roomtone::lyricIndexAt(rt.session,ms);
+                    if(op=="next-line"){
+                        const auto next=index==rt.session.lines.size()?0:index+1;
+                        if(next>=rt.session.lines.size()){std::cout<<"No later lyric\n";continue;}
+                        const auto target=std::clamp<std::int64_t>(
+                            static_cast<std::int64_t>(rt.session.lines[next].milliseconds)+rt.session.offsetMs,
+                            0,static_cast<std::int64_t>(rt.mixer.songFrames()/48));
+                        rt.seekRequest.store(static_cast<std::uint64_t>(target)*48);
+                        std::cout<<"Next lyric seek queued at "<<target/1000.0<<" seconds\n";
+                    }else{
+                        std::cout<<"Song "<<ms/1000.0<<"s | ";
+                        if(index==rt.session.lines.size())std::cout<<"Get ready...";
+                        else std::cout<<rt.session.lines[index].text;
+                        if(index+1<rt.session.lines.size())
+                            std::cout<<" | NEXT: "<<rt.session.lines[index+1].text;
+                        std::cout<<"\n";
+                    }
                 }else if(op=="status"){
                     std::cout<<"Mic "<<(rt.monitoring.load()?"ON":"MUTED")
                              <<"; song "<<(rt.musicPlaying.load()?"PLAYING":"PAUSED")
