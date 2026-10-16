@@ -679,7 +679,8 @@ int main(int argc,char** argv) {
                             std::min<std::uint64_t>(rt.songPosition.load()/48,720000));
                         const auto current=roomtone::lyricIndexAt(rt.session,ms);
                         const auto chosen=roomtone::desktop::selectLyric(rows,
-                            current==rt.session.lines.size()?0:current,window.hwnd);
+                            current==rt.session.lines.size()?0:current,window.hwnd,
+                            [&]{rt.monitoring.store(false);notice=L"VOICE MUTED (F8) while lyric navigator open.";});
                         if(!chosen){notice=L"Lyric navigation canceled; transport unchanged.";break;}
                         const auto target=std::clamp<std::int64_t>(
                             static_cast<std::int64_t>(rt.session.lines[*chosen].milliseconds)

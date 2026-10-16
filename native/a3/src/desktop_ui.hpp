@@ -406,7 +406,8 @@ struct LyricChooser {
  const std::vector<std::wstring>* rows=nullptr;
  std::size_t current=0;
  std::optional<std::size_t> chosen;
- bool syntheticCancel=false;
+ std::function<void()> emergencyMute; // focused modal only, never system-wide
+ bool syntheticCancel=false,syntheticMute=false;
  static LRESULT CALLBACK proc(HWND h,UINT msg,WPARAM w,LPARAM l){
   auto* self=reinterpret_cast<LyricChooser*>(GetWindowLongPtrW(h,GWLP_USERDATA));
   if(msg==WM_NCCREATE){
@@ -436,6 +437,7 @@ struct LyricChooser {
     createButton(L"Jump to line",398,301,BS_DEFPUSHBUTTON);
     createButton(L"Cancel",558,302,BS_PUSHBUTTON);
     SetFocus(self->list);
+    if(self->syntheticMute)PostMessageW(self->list,WM_KEYDOWN,VK_F8,0);
     if(self->syntheticCancel)PostMessageW(h,WM_CLOSE,0,0);
     return 0;
    }
@@ -473,6 +475,12 @@ struct LyricChooser {
   while(hwnd&&IsWindow(hwnd)){
    const auto result=GetMessageW(&msg,nullptr,0,0);
    if(result<=0){if(result==0)PostQuitMessage(static_cast<int>(msg.wParam));break;}
+   // A live lyric modal must never obstruct the owner-local F8 emergency mute.
+   if(msg.message==WM_KEYDOWN&&msg.wParam==VK_F8&&
+      (msg.hwnd==hwnd||IsChild(hwnd,msg.hwnd))){
+    if(emergencyMute)emergencyMute();
+    continue;
+   }
    if(!IsDialogMessageW(hwnd,&msg)){TranslateMessage(&msg);DispatchMessageW(&msg);}
   }
   if(disableOwner&&IsWindow(owner)){
@@ -484,8 +492,9 @@ struct LyricChooser {
  }
 };
 inline std::optional<std::size_t> selectLyric(const std::vector<std::wstring>& rows,
- std::size_t current,HWND owner=nullptr){
+ std::size_t current,HWND owner=nullptr,std::function<void()> emergencyMute={}){
  LyricChooser picker;picker.rows=&rows;picker.current=current;picker.owner=owner;
+ picker.emergencyMute=std::move(emergencyMute);
  return picker.run();
 }
 inline std::optional<std::pair<int,int>> selectDevices(

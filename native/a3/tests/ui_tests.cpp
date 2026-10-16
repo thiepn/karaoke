@@ -5,7 +5,7 @@ int main(){
 #ifdef _WIN32
  try{
   roomtone::desktop::Window window;
-  unsigned snapshots=0,playEvents=0,muteEvents=0,seekEvents=0,lastSeek=0,topologyEvents=0,tickEvents=0,previousEvents=0,browseEvents=0;
+  unsigned snapshots=0,playEvents=0,muteEvents=0,seekEvents=0,lastSeek=0,topologyEvents=0,tickEvents=0,previousEvents=0,browseEvents=0,modalMuteEvents=0;
   window.syntheticTest=true;
   window.controller.snapshot=[&]{
    ++snapshots;
@@ -41,14 +41,15 @@ int main(){
   {
    roomtone::desktop::LyricChooser chooser;
    std::vector<std::wstring> rows{L"0:10 Verse one",L"0:24 Chorus"};
-   chooser.rows=&rows;chooser.current=1;chooser.syntheticCancel=true;
+   chooser.rows=&rows;chooser.current=1;chooser.syntheticMute=true;chooser.syntheticCancel=true;
+   chooser.emergencyMute=[&]{++modalMuteEvents;};
    if(chooser.run().has_value())throw std::runtime_error("Cancelled lyric jump was accepted");
    MSG pending{};
    if(PeekMessageW(&pending,nullptr,WM_QUIT,WM_QUIT,PM_NOREMOVE))
     throw std::runtime_error("Lyric chooser incorrectly posted process-wide quit");
   }
   const int result=window.run();
-  if(result!=0||snapshots==0||playEvents!=1||muteEvents!=1||previousEvents!=1||browseEvents!=1||topologyEvents<1||tickEvents==0||seekEvents!=1||lastSeek!=43)
+  if(result!=0||snapshots==0||playEvents!=1||muteEvents!=1||previousEvents!=1||browseEvents!=1||modalMuteEvents!=1||topologyEvents<1||tickEvents==0||seekEvents!=1||lastSeek!=43)
    throw std::runtime_error("in-process control/seek message, modal lifetime and focus");
   if(roomtone::desktop::wide("Nacht \xC3\xBC""ber")!=L"Nacht \xFC""ber")
    throw std::runtime_error("UTF-8 lyric display decoding");
