@@ -25,6 +25,31 @@ inline Match resolve(const std::string& name,const std::vector<std::string>& ava
 inline bool acceptsEndpointId(const std::string& pinned,const std::string& observed){
  return !observed.empty()&&(pinned.empty()||pinned==observed);
 }
+// Index returned to the Win32 chooser. -1 is an explicit Windows default;
+// -2 means a missing/ambiguous previously chosen endpoint, requiring owner input.
+inline int chooserIndex(const std::string& selected,
+                        const std::vector<std::string>& available){
+ const Match match=resolve(selected,available);
+ return match.state==State::Default?-1:match.state==State::Unique?match.index:-2;
+}
+// The user saw a particular endpoint at dialog opening. A hotplug during
+// the modal window cannot silently authorize another device under the same
+// display name or a reordered index. Call after fresh re-enumeration.
+inline bool retainsCandidate(int choice,
+ const std::vector<std::string>& beforeNames,
+ const std::vector<std::string>& beforeIds,
+ const std::vector<std::string>& afterNames,
+ const std::vector<std::string>& afterIds){
+ if(choice==-1)return true; // explicitly selected Windows default
+ if(choice<0||static_cast<std::size_t>(choice)>=beforeNames.size()||
+    beforeNames.size()!=beforeIds.size()||afterNames.size()!=afterIds.size())return false;
+ const auto matching=resolve(beforeNames[static_cast<std::size_t>(choice)],afterNames);
+ if(matching.state!=State::Unique||
+    matching.index<0||static_cast<std::size_t>(matching.index)>=afterIds.size())return false;
+ const auto& id=beforeIds[static_cast<std::size_t>(choice)];
+ return !id.empty()&&id==afterIds[static_cast<std::size_t>(matching.index)]&&
+        resolve(beforeNames[static_cast<std::size_t>(choice)],beforeNames).state==State::Unique;
+}
 struct Selection {
  std::string inputName,outputName;
  bool inputDefault=true,outputDefault=true;

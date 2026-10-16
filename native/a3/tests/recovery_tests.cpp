@@ -29,6 +29,18 @@ int main(){
  need(selectedName(1,now,chosen)&&chosen=="USB QuadCast","unique user choice");
  need(resolve(chosen,{"USB QuadCast"}).index==0,"permuted index resolved from name");
  need(resolve(chosen,{"Another speaker"}).state==State::Missing,"no fallback to unrelated device");
+ need(chooserIndex("",first)==-1,"default remains explicitly default");
+ need(chooserIndex("Built-in microphone",first)==1,"previous selection remains highlighted");
+ need(chooserIndex("USB QuadCast",first)==-2,"ambiguous previous choice is not default");
+ need(chooserIndex("Unplugged",first)==-2,"missing selected device requires fresh owner choice");
+ const std::vector<std::string> beforeNames{"Mic A","Speaker B"};
+ const std::vector<std::string> beforeIds{"endpoint-A","endpoint-B"};
+ need(retainsCandidate(0,beforeNames,beforeIds,{"Speaker B","Mic A"},{"endpoint-B","endpoint-A"}),"reordering retains actual endpoint");
+ need(!retainsCandidate(0,beforeNames,beforeIds,{"Mic A","Speaker B"},{"endpoint-C","endpoint-B"}),"same name replaced during picker rejected");
+ need(!retainsCandidate(0,beforeNames,beforeIds,{"Mic A","Mic A"},{"endpoint-A","endpoint-A"}),"duplicated label during picker rejected");
+ need(!retainsCandidate(0,beforeNames,beforeIds,{"Speaker B"},{"endpoint-B"}),"unplug during picker rejected");
+ need(!retainsCandidate(9,beforeNames,beforeIds,beforeNames,beforeIds),"stale index rejected");
+ need(retainsCandidate(-1,beforeNames,beforeIds,{},{}),"explicit default remains OS-owned");
  need(acceptsEndpointId("","wasapi:device-a"),"initial explicit selection pins fresh endpoint");
  need(acceptsEndpointId("wasapi:device-a","wasapi:device-a"),"original endpoint reconnect accepted");
  need(!acceptsEndpointId("wasapi:device-a","wasapi:device-b"),"same-name replacement endpoint refused");

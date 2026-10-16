@@ -298,6 +298,7 @@ struct DeviceChooser{
  HFONT text=nullptr;
  const std::vector<std::wstring>* inputs=nullptr,*outputs=nullptr;
  int inputChoice=-1,outputChoice=-1;
+ int initiallySelectedInput=-1,initiallySelectedOutput=-1; // -2 means missing/ambiguous
  HWND owner=nullptr;
  bool approved=false,syntheticCancel=false;
  static LRESULT CALLBACK proc(HWND h,UINT msg,WPARAM w,LPARAM l){
@@ -324,8 +325,12 @@ struct DeviceChooser{
     SendMessageW(self->input,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(value.c_str()));
    for(const auto& value:*self->outputs)
     SendMessageW(self->output,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(value.c_str()));
-   SendMessageW(self->input,CB_SETCURSEL,0,0);
-   SendMessageW(self->output,CB_SETCURSEL,0,0);
+   // Index zero is the explicit default, never silently preselect it after
+   // a prior named endpoint disappeared. CB_SETCURSEL(-1) means no choice.
+   SendMessageW(self->input,CB_SETCURSEL,
+    static_cast<WPARAM>(self->initiallySelectedInput+1),0);
+   SendMessageW(self->output,CB_SETCURSEL,
+    static_cast<WPARAM>(self->initiallySelectedOutput+1),0);
    create(L"BUTTON",L"Use devices",BS_DEFPUSHBUTTON|WS_TABSTOP,205,200,135,38,101);
    create(L"BUTTON",L"Cancel",BS_PUSHBUTTON|WS_TABSTOP,350,200,130,38,102);
    if(self->syntheticCancel)PostMessageW(h,WM_CLOSE,0,0);
@@ -333,8 +338,14 @@ struct DeviceChooser{
   }
   if(msg==WM_COMMAND){
    if(LOWORD(w)==101){
-    self->inputChoice=static_cast<int>(SendMessageW(self->input,CB_GETCURSEL,0,0))-1;
-    self->outputChoice=static_cast<int>(SendMessageW(self->output,CB_GETCURSEL,0,0))-1;
+    const int in=static_cast<int>(SendMessageW(self->input,CB_GETCURSEL,0,0));
+    const int out=static_cast<int>(SendMessageW(self->output,CB_GETCURSEL,0,0));
+    if(in==CB_ERR||out==CB_ERR){
+     MessageBoxW(h,L"A selected device is disconnected or ambiguous. Choose a microphone and speaker explicitly.",
+       L"ROOMTONE | Device selection required",MB_OK|MB_ICONWARNING);
+     return 0;
+    }
+    self->inputChoice=in-1;self->outputChoice=out-1;
     self->approved=true;DestroyWindow(h);return 0;
    }
    if(LOWORD(w)==102){DestroyWindow(h);return 0;}
@@ -377,8 +388,10 @@ struct DeviceChooser{
  }
 };
 inline std::optional<std::pair<int,int>> selectDevices(
- const std::vector<std::wstring>& inputs,const std::vector<std::wstring>& outputs,HWND owner=nullptr){
+ const std::vector<std::wstring>& inputs,const std::vector<std::wstring>& outputs,
+ HWND owner=nullptr,int initialInput=-1,int initialOutput=-1){
  DeviceChooser picker;picker.inputs=&inputs;picker.outputs=&outputs;picker.owner=owner;
+ picker.initiallySelectedInput=initialInput;picker.initiallySelectedOutput=initialOutput;
  return picker.run();
 }
 }

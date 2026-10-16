@@ -28,7 +28,9 @@ int main(){
   {
    roomtone::desktop::DeviceChooser picker;
    const std::vector<std::wstring> input{L"Test input"},output{L"Test output"};
-   picker.inputs=&input;picker.outputs=&output;picker.syntheticCancel=true;
+   picker.inputs=&input;picker.outputs=&output;
+   picker.initiallySelectedInput=0;picker.initiallySelectedOutput=-2;
+   picker.syntheticCancel=true;
    if(picker.run().has_value())throw std::runtime_error("Synthetic chooser cancellation accepted");
    MSG pending{};
    if(PeekMessageW(&pending,nullptr,WM_QUIT,WM_QUIT,PM_NOREMOVE))
