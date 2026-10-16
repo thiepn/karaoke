@@ -21,6 +21,10 @@ with tempfile.TemporaryDirectory() as td:
  missing=subprocess.run([str(exe),"--probe-song","--song",str(path)+".missing"],
     capture_output=True,text=True,timeout=20)
  assert missing.returncode!=0,"Missing song was accepted"
+ for forbidden in ("--pick-song","--setup"):
+  guarded=subprocess.run([str(exe),"--probe-song","--song",str(path),forbidden],
+    capture_output=True,text=True,timeout=20)
+  assert guarded.returncode!=0,"Interactive mode incorrectly allowed in offline probe: "+forbidden
  invalid=subprocess.run([str(exe),"--probe-song"],
     capture_output=True,text=True,timeout=20)
  assert invalid.returncode!=0,"Song not required for probe"

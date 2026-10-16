@@ -10,6 +10,30 @@ permissions:
   contents: read
 
 jobs:
+  browser:
+    name: A1 routing Chromium local HTTP regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - name: Checkout exact event head
+        uses: actions/checkout@v4
+        with:
+          ref: \${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify inherited A1 assets and exact SHA
+        shell: bash
+        env:
+          EXPECTED_HEAD: \${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test -f tests/audio_route_smoke.py
+          test -f docs/A1R_LOW_LATENCY_ROUTING.md
+      - name: Install Chromium Playwright
+        run: |
+          python -m pip install --disable-pip-version-check playwright==1.55.0
+          python -m playwright install --with-deps chromium
+      - name: Execute A1 synthetic real-browser routing checks
+        run: python tests/audio_route_smoke.py
   native:
     name: ${{ matrix.os }} native build and DSP
     strategy:
