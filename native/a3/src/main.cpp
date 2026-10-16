@@ -35,7 +35,7 @@ struct Options {
     float echo=0.12f,feedback=0.15f,musicGain=0.2f;
     unsigned echoMs=280;
     std::string song,handoffFile;
-    bool list = false,probeSong=false,pickSong=false,guided=false,probeHandoff=false;
+    bool list = false,probeSong=false,pickSong=false,guided=false,probeHandoff=false,pickHandoff=false;
 };
 static int readInteger(const std::string& s) {
     std::size_t count=0;
@@ -58,6 +58,7 @@ static Options parse(int argc,char** argv) {
         if(key=="--pick-song"){opt.pickSong=true;continue;}
         if(key=="--setup"){opt.guided=true;continue;}
         if(key=="--probe-handoff"){opt.probeHandoff=true;continue;}
+        if(key=="--pick-handoff"){opt.pickHandoff=true;continue;}
         if(key=="--help"||key=="-h"){
             std::cout<<"ROOMTONE A3 Windows WASAPI proof-of-concept\n"
                      <<"  --list  list device indices (0-based)\n"
@@ -69,6 +70,7 @@ static Options parse(int argc,char** argv) {
                      <<"  --probe-song  decode local track without opening devices\n"
                      <<"  --pick-song  Windows file chooser (Unicode paths)\n"
                      <<"  --handoff PATH  import offline browser lyrics/position (.rtk)\n"
+                     <<"  --pick-handoff  choose downloaded .rtk in Windows file picker\n"
                      <<"  --probe-handoff  validate .rtk WITHOUT opening devices\n"
                      <<"  --setup  guided mic/speaker device selection\n"
                      <<"  --echo 0..0.35 --feedback 0..0.35 --echo-ms 80..550\n"
@@ -100,7 +102,7 @@ static Options parse(int argc,char** argv) {
        opt.echo<0||opt.echo>0.35f||opt.feedback<0||opt.feedback>0.35f||
        opt.echoMs<80||opt.echoMs>550||opt.musicGain<0||opt.musicGain>0.50f)
         throw std::invalid_argument("audio levels outside safe test range");
-    if(opt.probeHandoff&&opt.handoffFile.empty())throw std::invalid_argument("--probe-handoff needs --handoff PATH");
+    if(opt.probeHandoff&&(opt.handoffFile.empty()||opt.pickHandoff||opt.pickSong||opt.guided))throw std::invalid_argument("--probe-handoff requires --handoff PATH without interactive flags");
     if(opt.probeSong&&(opt.song.empty()||opt.pickSong||opt.guided))
         throw std::invalid_argument("--probe-song needs --song PATH without --setup/--pick-song");
     return opt;
@@ -149,6 +151,18 @@ static std::wstring chooseSongFile() {
     const DWORD error=CommDlgExtendedError();
     if(error!=0)throw std::runtime_error("Windows file chooser failed (code "+std::to_string(error)+")");
     return {}; // Cancelled by user.
+}
+static std::wstring chooseHandoffFile(){
+ wchar_t filename[32768]={};
+ OPENFILENAMEW d{};
+ d.lStructSize=sizeof(d);d.lpstrFile=filename;
+ d.nMaxFile=static_cast<DWORD>(sizeof(filename)/sizeof(filename[0]));
+ d.lpstrFilter=L"ROOMTONE sessions (*.rtk)\0*.rtk\0All files\0*.*\0";
+ d.Flags=OFN_EXPLORER|OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
+ if(GetOpenFileNameW(&d))return filename;
+ const DWORD err=CommDlgExtendedError();
+ if(err)throw std::runtime_error("Could not open native session picker (error "+std::to_string(err)+")");
+ return {}; // User cancelled, no session imported.
 }
 static int chooseDeviceIndex(const char* label,ma_device_info* list,ma_uint32 count){
     for(;;){
@@ -262,14 +276,22 @@ int main(int argc,char** argv) {
         bool hasHandoff=false;
         if(!opt.handoffFile.empty()&&!opt.list&&!opt.probeSong){
             imported=roomtone::loadHandoff(opt.handoffFile);hasHandoff=true;
-            if(opt.song.empty()&&chosenSong.empty())
-                throw std::invalid_argument("--handoff requires the matching --song PATH or --pick-song");
-            const auto filename=chosenSong.empty()
-              ?std::filesystem::u8path(opt.song).filename().u8string()
-              :std::filesystem::path(chosenSong).filename().u8string();
-            if(filename!=imported.audioName)
-                throw std::invalid_argument("Chosen local instrumental filename does not match the handoff");
         }
+        if(!opt.list&&!opt.probeSong&&(opt.pickHandoff||(opt.guided&&!hasHandoff))){
+            bool choose=opt.pickHandoff;
+            if(!choose&&opt.guided){
+                std::cout<<"Import the downloaded browser .rtk session? y/N: "<<std::flush;
+                std::string answer;
+                if(!std::getline(std::cin,answer))return 0;
+                choose=answer=="y"||answer=="Y";
+            }
+            if(choose){
+                const auto selected=chooseHandoffFile();
+                if(!selected.empty()){
+                    imported=roomtone::loadHandoff(std::filesystem::path(selected));
+                    hasHandoff=true;
+                }
+            }
         // Decode before WASAPI; .rtk never contains audio bytes or disk path.
         auto song=opt.list?std::vector<float>{}:loadSong(opt.song,chosenSong);
         if(opt.probeSong){

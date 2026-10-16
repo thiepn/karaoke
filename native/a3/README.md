@@ -41,3 +41,12 @@ This is NOT a browser-native control bridge. Webpages cannot safely launch/contr
 Physical testing is outstanding: QuadCast/Pebble latency, real device hot-unplug, Windows file-picker clicks, singing audio quality and acoustic feedback. Start with wired headphones, not simultaneous QuadCast direct monitoring. Test Pebble V3 only over USB/AUX at low volume; point the cardioid pickup away and physically mute or turn speakers off if feedback occurs. CLI Enter is NOT an emergency mute. Buffer period is NOT measured latency.
 
 See docs/A3_OWNER_HARDWARE_ACCEPTANCE.md. Do not release or merge without owner evidence.
+
+
+## Browser-to-native offline handoff (no relay)
+
+In ROOMTONE Songs, choose a LOCAL song and optionally edit its lyric lines and A–B loop. Select **Stop browser audio & download session**. The browser pauses music, mutes/stops browser microphone capture and downloads an `.rtk` text file. Browser playback stays locked until **Return to browser audio** is explicitly selected. Existing local recordings are not silently exported or erased; handoff refuses to interrupt an active recording.
+
+On Windows, launch the A3 executable without arguments. Choose the same original song in the native dialog. Answer `y` to import a browser session and pick the downloaded `.rtk` file, or use `--song PATH --handoff PATH` or `--pick-song --pick-handoff`. The native program refuses a session whose audio filename does not exactly match the selected instrumental. It retains the browser-start position, lyric offset, timed lines and optional A–B loop, then starts **MUTED and PAUSED**. Commands `lyrics` and `next-line` use callback-reported song time for native console lyric navigation; no background relay, web controller or browser lyric auto-sync exists. `--probe-handoff --handoff file.rtk` validates locally before opening any audio device.
+
+The `.rtk` carries no audio bytes, native filesystem path, recordings or credentials. It is user-triggered and must be transferred manually. Do not assume Windows effects or clock timing has been physically measured. The browser and native programs are separate; only one should own live audio at a time.
