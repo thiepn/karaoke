@@ -25,6 +25,13 @@ int main(){
  need(roomtone::lyricIndexAt(h,9700)==h.lines.size(),"negative offset before first");
  need(roomtone::lyricIndexAt(h,9800)==0,"offset-adjusted line");
  need(roomtone::lyricIndexAt(h,12800)==1,"second line");
+ need(roomtone::lyricJumpMs(h,9000,true,20000)==9800,"next lyric before first with offset");
+ need(roomtone::lyricJumpMs(h,12800,false,20000)==9800,"previous at second line start");
+ need(roomtone::lyricJumpMs(h,16000,false,20000)==12800,"previous returns current line after threshold");
+ need(roomtone::lyricJumpMs(h,9000,false,20000)==9800,"previous before first");
+ need(!roomtone::lyricJumpMs(h,12800,true,20000),"no next after final lyric");
+ need(roomtone::lyricJumpMs(h,9000,true,9000)==9000,"clamped to song duration");
+ need(!roomtone::lyricJumpMs(roomtone::Handoff{},0,true,1000),"no lyrics no jump");
  need(rejects("invalid\n"+doc),"magic required");
  need(rejects(doc+"evil\t123\n"),"unknown key");
  need(rejects(doc+"start-ms\t1\n"),"duplicate key");

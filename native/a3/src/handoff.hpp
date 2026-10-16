@@ -7,6 +7,7 @@
 #include <fstream>
 #include <filesystem>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -136,5 +137,22 @@ inline std::size_t lyricIndexAt(const Handoff& h,std::uint32_t positionMs){
  auto it=std::upper_bound(h.lines.begin(),h.lines.end(),adjusted,
    [](std::int64_t at,const HandoffLine& l){return at<l.milliseconds;});
  return it==h.lines.begin()?h.lines.size():static_cast<std::size_t>((it-h.lines.begin())-1);
+}
+// Source-owned lyric positions. Control thread only; no second playback engine.
+inline std::optional<std::uint32_t> lyricJumpMs(const Handoff& h,
+ std::uint32_t positionMs,bool forward,std::uint32_t durationMs){
+ if(h.lines.empty())return std::nullopt;
+ const auto at=lyricIndexAt(h,positionMs);
+ std::size_t target=0;
+ if(forward){
+  target=at==h.lines.size()?0:at+1;
+  if(target==h.lines.size())return std::nullopt;
+ }else if(at!=h.lines.size()){
+  const auto current=std::clamp<std::int64_t>(
+   static_cast<std::int64_t>(h.lines[at].milliseconds)+h.offsetMs,0,durationMs);
+  target=positionMs>current+1500?at:(at>0?at-1:0);
+ }
+ const auto wanted=static_cast<std::int64_t>(h.lines[target].milliseconds)+h.offsetMs;
+ return static_cast<std::uint32_t>(std::clamp<std::int64_t>(wanted,0,durationMs));
 }
 }
