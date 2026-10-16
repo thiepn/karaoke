@@ -32,3 +32,13 @@ All physical recovery, measured latency and acoustic safety gates remain **NOT T
 - Confirm owner-thread cleanup on real USB removal and rapid hotplug while the native UI and modal picker are open. The current CI cannot simulate actual device driver callbacks or real hardware.
 
 No QuadCast/Pebble latency or acoustic feedback measurements are claimed. Real device hot-unplug and hardware identity acceptance are **NOT TESTED**.
+
+## Additional A3 owner acceptance: compact screen, modal transport and endpoint ID continuity — NOT TESTED
+
+1. On Windows at 1366×768 and 125–200% DPI, check full native window visibility including MUTE NOW, gain and status; run Tab/Shift+Tab and a screen reader (NVDA or Narrator). Synthetic sizing does not demonstrate actual DPI or screen-reader usability.
+2. Import a source-matched local .rtk with long multilingual lyrics. Browse timed lyric list using Ctrl+L, arrows, Enter, double click and Cancel. Confirm offsets, current/previous/next progression and transport preservation while paused, playing, and offline.
+3. With the lyrics modal open, press focused F8; confirm microphone monitoring immediately mutes without closing the dialog. Physically mute the mic or power speakers off if any feedback occurs; F8 alone is not a verified emergency safety guarantee.
+4. Select named microphone and speaker, reopen the device modal and verify the original names remain selected. Disconnect one during the modal: the former name must not silently select Windows default. Change a same-name endpoint ID and confirm no audio resume until deliberate selection. Test rapid USB replug, default routing, and recovery of song position and DSP state.
+5. Run a measured microphone-to-headphones loopback check, then only after safe wired-headphone acceptance test Pebble at low output; log method, driver and endpoint IDs without committing private machine identifiers.
+
+Physical QuadCast/Pebble behavior, genuine endpoint re-enumeration, acoustic feedback and measured latency remain NOT TESTED. No native release authorization.
