@@ -26,7 +26,7 @@ struct Options {
     float echo=0.12f,feedback=0.15f,musicGain=0.2f;
     unsigned echoMs=280;
     std::string song;
-    bool list = false;
+    bool list = false,probeSong=false;
 };
 static int readInteger(const std::string& s) {
     std::size_t count=0;
@@ -45,6 +45,7 @@ static Options parse(int argc,char** argv) {
     for(int i=1;i<argc;++i) {
         const std::string key=argv[i];
         if(key=="--list"){opt.list=true;continue;}
+        if(key=="--probe-song"){opt.probeSong=true;continue;}
         if(key=="--help"||key=="-h"){
             std::cout<<"ROOMTONE A3 Windows WASAPI proof-of-concept\n"
                      <<"  --list  list device indices (0-based)\n"
@@ -53,6 +54,7 @@ static Options parse(int argc,char** argv) {
                      <<"  --wet 0..0.25  short parallel reverb, default 0.12\n"
                      <<"  --gain 0..0.35  output level, default 0.18\n"
                      <<"  --song PATH  local MP3/WAV/FLAC instrumental (12-minute limit)\n"
+                     <<"  --probe-song  decode local track without opening devices\n"
                      <<"  --echo 0..0.35 --feedback 0..0.35 --echo-ms 80..550\n"
                      <<"  --music 0..0.50  backing track volume\n"
                      <<"Starts MIC MUTED and SONG PAUSED. Commands m/p/r, status,\n"
@@ -80,6 +82,7 @@ static Options parse(int argc,char** argv) {
        opt.echo<0||opt.echo>0.35f||opt.feedback<0||opt.feedback>0.35f||
        opt.echoMs<80||opt.echoMs>550||opt.musicGain<0||opt.musicGain>0.50f)
         throw std::invalid_argument("audio levels outside safe test range");
+    if(opt.probeSong&&opt.song.empty())throw std::invalid_argument("--probe-song requires --song PATH");
     return opt;
 }
 
@@ -161,6 +164,10 @@ int main(int argc,char** argv) {
         const Options opt=parse(argc,argv);
         // --list must not touch backing-track files.
         auto song=opt.list?std::vector<float>{}:loadSong(opt.song);
+        if(opt.probeSong){
+            std::cout<<"DECODED_LOCAL_FRAMES "<<song.size()/2<<" AT_48000_STEREO; no audio device opened.\n";
+            return 0;
+        }
         const ma_backend backend[]={ma_backend_wasapi};
         ma_context context{};
         if(ma_context_init(backend,1,nullptr,&context)!=MA_SUCCESS) {

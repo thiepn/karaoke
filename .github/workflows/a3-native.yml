@@ -55,6 +55,14 @@ jobs:
           if (-not $exe) { throw "Missing native EXE" }
           & $exe.FullName --help
           if ($LASTEXITCODE -ne 0) { throw "CLI help failed" }
+      - name: Windows local file decoder acceptance without hardware
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem build/a3 -Filter roomtone_a3_native.exe -Recurse | Select-Object -First 1
+          if (-not $exe) { throw "Missing native EXE" }
+          python native/a3/tests/song_decode_smoke.py $exe.FullName
+          if ($LASTEXITCODE -ne 0) { throw "Native decode acceptance failed" }
       - name: Retain unsigned experimental Windows EXE
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4

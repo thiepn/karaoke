@@ -1,41 +1,45 @@
-# ROOMTONE A3 — Experimental Windows-native audio
+# ROOMTONE A3 — Experimental Windows-native karaoke
 
-This is a **standalone Windows WASAPI console prototype**, not a replacement for the browser app. No hardware round-trip latency has been measured, and neither reliability nor speaker feedback safety is certified.
+Unmerged Windows WASAPI console prototype. One full-duplex callback mixes live microphone capture and a predecoded local stereo backing track. The original immediate dry vocal DSP now provides separately adjustable short-room reflections and repeating echo. This is not a replacement for, nor a bridge to, browser ROOMTONE.
 
-The implementation uses C++17, miniaudio 0.11.25 pinned to commit 9634bedb5b5a2ca38c1ee7108a9358a4e233f14d, WASAPI shared-mode capture/playback within one duplex callback, floating-point 48kHz mono capture and stereo output. Requested buffer periods: 120/240/480 frames (not guarantees). Dry voice has no intentional DSP delay; optional parallel short reverb and bounded gain use no memory allocation or locks in the callback. Microphone monitoring starts **MUTED** and is only enabled by typing m then Enter; physical microphone mute remains essential. No songs or recordings yet.
+- Microphone starts MUTED; backing track starts PAUSED.
+- Original WASAPI shared-mode 48 kHz duplex device remains the single processing engine. Buffers of 120/240/480 frames are only requested sizes, NOT measured latency.
+- Local MP3, WAV or FLAC song is predecoded through pinned miniaudio before opening devices, bounded to 12 minutes, with no allocation, I/O or mutex in callback.
+- Live settings: vocal gain, reverb wet level, echo level/delay/feedback, backing-track volume. Local stereo playback: play/pause/rewind. Output is hard-bounded, not feedback protected.
+- Audio is never uploaded, saved, or silently recorded. Existing browser recording and A1 routing remain separate and unchanged.
 
-## Build with Windows 10/11, CMake, Git and Visual Studio C++ tools
+## Run
 
-Use a new clone or a clean checkout, avoiding production:
+Windows 10/11, Visual Studio C++ tools, CMake and Git required for initial pinned miniaudio FetchContent.
 
     git fetch origin feat/a3-native-audio-prototype
-    git switch --detach <EXACT_A3_HEAD_SHA>
+    git switch --detach <exact commit>
     cmake -S native/a3 -B build/a3 -A x64
     cmake --build build/a3 --config Release
     ctest --test-dir build/a3 -C Release --output-on-failure
     .\build\a3\Release\roomtone_a3_native.exe --list
+    .\build\a3\Release\roomtone_a3_native.exe --song "C:\Music\backing.mp3" --gain 0.10 --wet 0.12 --echo 0.15 --echo-ms 280 --music 0.2
 
-Run with the 0-based indexes from the device list:
+Leave --input and --output unset to use system defaults, or supply their indices from --list.
 
-    .\build\a3\Release\roomtone_a3_native.exe --input N --output M --period 240 --wet 0 --gain 0.12
+- Command m + Enter: toggle vocal monitoring (default OFF).
+- Command p + Enter: toggle song playback (default PAUSED).
+- Command r + Enter: rewind and play. Command status: show approximate callback-position.
+- Commands wet 0.15 / gain 0.10 / echo 0.18 / feedback 0.12 / echo-ms 280 / music 0.20: adjust immediately on next processing block, within guarded limits.
+- Command q: quit.
 
-You need network access during the first CMake configure to fetch the pinned open-source miniaudio source. A GitHub Actions artifact, if the build passes, is UNSIGNED and not a production release.
+You can check decoding without opening the speaker or microphone device:
 
-## Physical QuadCast and Pebble V3 acceptance
+    .\build\a3\Release\roomtone_a3_native.exe --probe-song --song "C:\Music\backing.mp3"
 
-1. Close browser ROOMTONE and all other monitoring programs. Connect QuadCast by USB. **Use wired headphones initially**, not speakers. Test QuadCast direct headphone monitoring as a subjective near-immediate reference, while avoiding doubled direct and processed monitoring.
-2. Run --list, choose devices, then run the dry --wet 0 test. Confirm it starts muted. Type m and Enter to enable; sing consonant-heavy phrases and a short scale. Compare audible delay and naturalness with browser ROOMTONE at similar volume. Type m and Enter to mute.
-3. Repeat with --wet 0.12 for restrained short room reverb and optionally --wet 0.20. Log any crackling, dropouts, distortions, feedback, and listening comfort for five minutes.
-4. On errors try --period 480 or Windows default input/output. Never equate requested 120/240/480 frames with measured end-to-end latency; device resampling and clock differences may add buffering.
-5. If headphones pass and you choose to try Pebble V3 loudspeakers, ensure USB or AUX, not Bluetooth; keep their physical volume very low and point them away from QuadCast cardioid pickup. Try --gain 0.08. **This prototype has no acoustic feedback detector. CLI mute requires Enter and is not an emergency stop. Use the QuadCast physical mute, or turn off the speaker, immediately if ringing begins.**
-6. Optionally estimate acoustic transit time with a separate phone recording of a gentle click near the mic and the click reproduced through speakers, repeated 10+ times. Use measured time difference and subtract the difference in sound travel distances / 343 m/s. Label this as a geometrically corrected acoustic estimate, not a calibrated electrical driver round-trip measurement.
-7. Record exact tested hardware, Windows audio settings, CLI parameters, expected and actual sound, median and range of measured acoustic time differences (if feasible), and whether A3 genuinely feels better than the browser. **No native performance claim until such real evidence is collected.**
+## What this does NOT provide
 
-| Gate | Status |
-|---|---|
-| Exact-head native Windows compilation and DSP test | Await CI |
-| Microphone and speaker enumeration on actual hardware | Not tested |
-| QuadCast-to-Pebble latency and singing comfort | Not tested |
-| Uncontrolled feedback, crackles, dropouts | Not tested |
-| Comparative karaoke experience | Not tested |
-| Production deployment or merge | Forbidden without owner authorization |
+No browser queue/lyrics sync, external audio/YouTube interception, automatic cross-process bridge, GUI, direct microphone recordings or guaranteed karaoke latency. Browser ROOMTONE continues to own its existing local recording UI. The native prototype provides a separately loaded local song only.
+
+## Physical owner testing — NOT TESTED
+
+First try wired headphones and compare immediate dry audio (--wet 0 --echo 0) against QuadCast direct monitoring. Avoid hearing both simultaneously. Then test reverb and echo separately, backing balance, pause/rewind and 5-minute stability.
+
+Only after headphone safety is confirmed, try Pebble V3 over USB/AUX at very low physical volume. Place speakers away from the QuadCast cardioid pickup and physically mute QuadCast or power down speakers if feedback occurs. The command-line toggle is NOT an emergency mute; there is no automatic acoustic feedback detector. Actual microphone-to-speaker latency must be measured on real hardware, not inferred from buffer size or synthetic CI.
+
+Linux/Windows CI covers DSP and mixer invariants, Windows native compilation and offline WAV decoder fixture. It does not prove low-latency operation on your real devices.
