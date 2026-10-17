@@ -107,7 +107,7 @@ struct Window {
   const int w=std::max(570L,bounds.right-bounds.left);
   const int height=std::max(640L,bounds.bottom-bounds.top);
   if(focusedLyrics){
-   const auto g=roomtone::reading_view::layout(w,height);
+   const auto g=roomtone::reading_view::layout(w,bounds.bottom-bounds.top);
    auto move=[&](HWND target,roomtone::reading_view::Rect r){
     MoveWindow(target,r.x,r.y,r.width,r.height,TRUE);
    };
@@ -172,6 +172,7 @@ struct Window {
   }
   if(s.hasLyrics)practiceNote+=L" · offset "+
       std::to_wstring(s.lyricOffsetMs)+L"ms";
+  if(focusedLyrics)practiceNote+=L" · FOCUS · Ctrl+F exits · Ctrl +/- text";
   setText(seekLabel,practiceNote);
   setText(previous,s.previous.empty()?L" ":s.previous);
   setText(current,s.current.empty()?L"No synchronized lyrics loaded":s.current);
@@ -469,7 +470,7 @@ struct Window {
    }
    if(!IsDialogMessageW(hwnd,&m)){TranslateMessage(&m);DispatchMessageW(&m);}
   }
-  applyFont(current,static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT)));
+  if(IsWindow(current))applyFont(current,static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT)));
   for(auto& typeface:lyricFonts){if(typeface){DeleteObject(typeface);typeface=nullptr;}}
   DeleteObject(minorFont);DeleteObject(regular);DeleteObject(large);DeleteObject(heading);
   return static_cast<int>(m.wParam);

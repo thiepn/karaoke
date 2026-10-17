@@ -4,7 +4,7 @@
 static void need(bool p,const char* err){if(!p)throw std::runtime_error(err);}
 int main(){
  using namespace roomtone::reading_view;
- for(int w:{570,620,860,1440})for(int h:{640,650,768,900,1200}){
+ for(int w:{570,620,860,1440})for(int h:{600,625,640,650,768,900,1200}){
   const auto a=layout(w,h);
   for(const auto& rect:{a.title,a.previous,a.current,a.next,a.seekLabel,
         a.seekBar,a.status,a.play,a.reconnect,a.mute,a.notice})
@@ -14,7 +14,7 @@ int main(){
   need(a.seekBar.y+a.seekBar.height<=a.status.y,"seek never covers safety status");
   need(a.status.y+a.status.height<=a.play.y,"safety status above transport");
   need(a.play.y+a.play.height<=a.notice.y,"transport above warning");
-  need(a.mute.width>=160&&a.current.height>=288,"readable source lyric and panic mute");
+  need(a.mute.width>=160&&a.current.height>=248,"readable source lyric and panic mute");
  }
  need(fontSize(false,-2)==30&&fontSize(false,9)==46,
       "bounded normal font sizes");
