@@ -757,7 +757,9 @@ int main(int argc,char** argv) {
                     if(deviceActive){rt.interrupted.store(true);safeStop();}
                     notice=L"Named microphone/speaker missing or ambiguous after device change. No silent fallback. Select devices or reconnect.";
                 }else if(!deviceActive){
-                    notice=L"Devices visible again. Press Reconnect to reopen voice-MUTED and song-PAUSED.";
+                    notice=ownerSuspended
+                        ?L"Owner suspended the duplex driver. Devices may be visible but remain OFFLINE until explicit recovery."
+                        :L"Devices visible again. Press Reconnect to reopen voice-MUTED and song-PAUSED.";
                 }
             };
             window.controller.snapshot=[&]()->Snapshot{
