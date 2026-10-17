@@ -8,7 +8,7 @@ int main(){
 #ifdef _WIN32
  try{
   roomtone::desktop::Window window;
-  unsigned snapshots=0,playEvents=0,muteEvents=0,seekEvents=0,lastSeek=0,topologyEvents=0,tickEvents=0,previousEvents=0,browseEvents=0,modalMuteEvents=0,deviceModalMuteEvents=0,queueModalMuteEvents=0,loopEvents=0,offsetEvents=0,saveEvents=0,queueActionEvents=0,manageQueueEvents=0;
+  unsigned snapshots=0,playEvents=0,muteEvents=0,seekEvents=0,lastSeek=0,topologyEvents=0,tickEvents=0,previousEvents=0,browseEvents=0,modalMuteEvents=0,deviceModalMuteEvents=0,queueModalMuteEvents=0,loopEvents=0,offsetEvents=0,saveEvents=0,queueActionEvents=0,manageQueueEvents=0,effectsEvents=0,recoveryEvents=0;
   window.syntheticTest=true;
   bool compactLayout=false;
   window.controller.snapshot=[&]{
@@ -25,6 +25,7 @@ int main(){
    state.current=L"First line";
    state.next=L"Second line";
    state.hasSong=true;state.hasLyrics=true;state.deviceActive=true;state.durationSeconds=120;
+   state.feedback=0.15f;state.delayMs=280;
    return state;
   };
   window.controller.action=[&](roomtone::desktop::Action action){
@@ -37,6 +38,11 @@ int main(){
    if(action==roomtone::desktop::SaveSession)++saveEvents;
    if(action==roomtone::desktop::AddQueueSong||action==roomtone::desktop::ShowQueue||
       action==roomtone::desktop::NextQueueSong||action==roomtone::desktop::PreviousQueueSong)++queueActionEvents;
+   if(action==roomtone::desktop::FeedbackDown||action==roomtone::desktop::FeedbackUp||
+      action==roomtone::desktop::DelayShorter||action==roomtone::desktop::DelayLonger||
+      action==roomtone::desktop::DryVoice||action==roomtone::desktop::RestoreEffects||
+      action==roomtone::desktop::ShowEffects)++effectsEvents;
+   if(action==roomtone::desktop::ShowRecovery)++recoveryEvents;
    if(action==roomtone::desktop::RemoveQueuedSong||action==roomtone::desktop::MoveQueuedUp||
       action==roomtone::desktop::MoveQueuedDown||action==roomtone::desktop::ClearPendingQueue)++manageQueueEvents;
   };
@@ -110,7 +116,7 @@ int main(){
    if(picker.run().has_value())throw std::runtime_error("Queue cancel changed current song");
   }
   const int result=window.run();
-  if(result!=0||snapshots==0||playEvents!=1||muteEvents!=1||previousEvents!=1||browseEvents!=1||loopEvents!=1||offsetEvents!=1||saveEvents!=1||queueActionEvents!=4||manageQueueEvents!=4||deviceModalMuteEvents!=1||queueModalMuteEvents!=1||modalMuteEvents!=1||!compactLayout||topologyEvents<1||tickEvents==0||seekEvents!=1||lastSeek!=43)
+  if(result!=0||snapshots==0||playEvents!=1||muteEvents!=1||previousEvents!=1||browseEvents!=1||loopEvents!=1||offsetEvents!=1||saveEvents!=1||queueActionEvents!=4||manageQueueEvents!=4||effectsEvents!=7||recoveryEvents!=1||deviceModalMuteEvents!=1||queueModalMuteEvents!=1||modalMuteEvents!=1||!compactLayout||topologyEvents<1||tickEvents==0||seekEvents!=1||lastSeek!=43)
    throw std::runtime_error("in-process control/seek message, modal lifetime and focus");
   if(roomtone::desktop::wide("Nacht \xC3\xBC""ber")!=L"Nacht \xFC""ber")
    throw std::runtime_error("UTF-8 lyric display decoding");
