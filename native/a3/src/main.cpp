@@ -7,6 +7,7 @@
 #include "transport.hpp"
 #include "handoff.hpp"
 #include "lrc.hpp"
+#include "practice.hpp"
 #include "desktop_ui.hpp"
 #include "device_recovery.hpp"
 #include <algorithm>
@@ -207,8 +208,11 @@ struct Runtime {
     std::atomic<unsigned> echoMs;
     std::atomic<std::uint64_t> songPosition{0};
     roomtone::Handoff session;
-    bool abLoop=false;
-    std::size_t abStart=0,abEnd=0;
+    // A-B markers may change on the GUI thread while the audio callback
+    // is rendering. Publish valid ranges after both frame positions.
+    std::atomic<bool> abLoop{false};
+    std::atomic<std::size_t> abStart{0},abEnd{0};
+    bool practiceStartMarked=false; // only accessed on owner/UI thread
 };
 // On driver stop/reroute, fail closed. Never restart/uninit a device from
 // a driver callback; the user can explicitly request reconnect on CLI thread.
@@ -246,7 +250,9 @@ static void callback(ma_device* device, void* output, const void* input, ma_uint
     const float level=rt->musicGain.load(std::memory_order_relaxed);
     for(ma_uint32 i=0;i<frames;++i) {
         if(play&&rt->repeat.load(std::memory_order_relaxed)){
-            if(rt->abLoop&&rt->mixer.position()>=rt->abEnd)rt->mixer.seekFrames(rt->abStart);
+            if(rt->abLoop.load(std::memory_order_relaxed)&&
+               rt->mixer.position()>=rt->abEnd.load(std::memory_order_relaxed))
+                 rt->mixer.seekFrames(rt->abStart.load(std::memory_order_relaxed));
             else if(rt->mixer.songEnded())rt->mixer.rewind();
         }
         const auto result=rt->mixer.render(in?in[i]:0.0f,monitor,play,level);
@@ -427,14 +433,18 @@ int main(int argc,char** argv) {
         std::wstring displayTitle=hasHandoff?roomtone::desktop::wide(imported.title)
              :roomtone::desktop::wide(selectedSongFile);
         Runtime rt(opt,std::move(song));
+        int importedLyricOffset=0;
         if(hasHandoff){
             rt.session=std::move(imported);
+            importedLyricOffset=rt.session.offsetMs;
             rt.seekRequest.store(std::min<std::uint64_t>(rt.session.startMs*48ULL,rt.mixer.songFrames()));
             rt.repeat.store(rt.session.loop);
             if(rt.session.loop){
-                rt.abStart=std::min<std::size_t>(rt.session.loopStartMs*48ULL,rt.mixer.songFrames());
-                rt.abEnd=std::min<std::size_t>(rt.session.loopEndMs*48ULL,rt.mixer.songFrames());
-                rt.abLoop=rt.abEnd>rt.abStart+12000;
+                const auto begin=std::min<std::size_t>(rt.session.loopStartMs*48ULL,rt.mixer.songFrames());
+                const auto finish=std::min<std::size_t>(rt.session.loopEndMs*48ULL,rt.mixer.songFrames());
+                rt.abStart.store(begin);rt.abEnd.store(finish);
+                rt.abLoop.store(roomtone::practice::validAB(begin,finish,rt.mixer.songFrames()));
+                rt.practiceStartMarked=rt.abLoop.load();
             }
         }
         ma_device device{};
@@ -589,6 +599,10 @@ int main(int argc,char** argv) {
                 view.durationSeconds=static_cast<unsigned>(rt.mixer.songFrames()/48000);
                 view.playing=rt.musicPlaying.load();view.microphone=rt.monitoring.load();
                 view.repeat=rt.repeat.load();view.interrupted=rt.interrupted.load();
+                view.loopMarked=rt.abLoop.load();
+                view.loopEnabled=view.loopMarked&&view.repeat;
+                view.loopA=rt.abStart.load();view.loopB=rt.abEnd.load();
+                view.lyricOffsetMs=rt.session.offsetMs;
                 view.deviceActive=deviceActive;view.hasSong=rt.mixer.hasSong();
                 view.hasLyrics=hasHandoff&&!rt.session.lines.empty();
                 view.reverb=rt.wet.load();view.echo=rt.echo.load();view.music=rt.musicGain.load();view.gain=rt.gain.load();
@@ -725,6 +739,56 @@ int main(int argc,char** argv) {
                         notice=L"Selected lyric seek queued without changing mic or music state.";
                         break;
                     }
+                    case Action::MarkLoopA:{
+                        if(!rt.mixer.hasSong()){notice=L"Load a song before marking A.";break;}
+                        const auto newA=roomtone::practice::markAt(rt.songPosition.load(),rt.mixer.songFrames());
+                        rt.abLoop.store(false);
+                        rt.abStart.store(static_cast<std::size_t>(newA));
+                        rt.practiceStartMarked=true;
+                        const auto end=rt.abEnd.load();
+                        const bool valid=roomtone::practice::validAB(newA,end,rt.mixer.songFrames());
+                        rt.abLoop.store(valid);
+                        rt.repeat.store(false); // Marking never enables playback/repeat.
+                        notice=valid?L"Loop A updated; use Practice > Toggle A-B to repeat."
+                            :L"Marked loop A. Seek forward at least 0.25 s, then mark B.";
+                        break;
+                    }
+                    case Action::MarkLoopB:{
+                        if(!rt.mixer.hasSong()||!rt.practiceStartMarked){
+                            notice=L"Mark loop A first.";break;
+                        }
+                        const auto newB=roomtone::practice::markAt(rt.songPosition.load(),rt.mixer.songFrames());
+                        if(!roomtone::practice::validAB(rt.abStart.load(),newB,rt.mixer.songFrames())){
+                            notice=L"Loop B must be more than 0.25 s after A and inside song.";break;
+                        }
+                        rt.abLoop.store(false);
+                        rt.abEnd.store(static_cast<std::size_t>(newB));
+                        rt.abLoop.store(true);rt.repeat.store(false);
+                        notice=L"A-B range ready. Use Practice > Toggle A-B to repeat; microphone unchanged.";
+                        break;
+                    }
+                    case Action::ClearAB:
+                        rt.abLoop.store(false);rt.repeat.store(false);
+                        rt.abStart.store(0);rt.abEnd.store(0);rt.practiceStartMarked=false;
+                        notice=L"A-B markers cleared; song repeat OFF. Playback/mic unchanged.";break;
+                    case Action::ToggleAB:
+                        if(!rt.abLoop.load()){
+                            notice=L"Mark A, then B more than 0.25 s later.";break;
+                        }
+                        rt.repeat.store(!rt.repeat.load());
+                        notice=rt.repeat.load()?L"A-B practice repeat ON; mic unchanged."
+                            :L"A-B practice repeat OFF; mic unchanged.";break;
+                    case Action::OffsetEarlier:case Action::OffsetLater:case Action::OffsetReset:{
+                        if(!hasHandoff||rt.session.lines.empty()){
+                            notice=L"Import timed lyrics before adjusting offset.";break;
+                        }
+                        rt.session.offsetMs=action==Action::OffsetReset?importedLyricOffset:
+                            roomtone::practice::adjustOffset(rt.session.offsetMs,
+                                action==Action::OffsetEarlier?-100:100);
+                        notice=L"Lyric offset "+std::to_wstring(rt.session.offsetMs)+
+                            L" ms (local practice only; no files changed).";
+                        break;
+                    }
                     case Action::Repeat:rt.repeat.store(!rt.repeat.load());break;
                     case Action::ReverbDown:level(rt.wet,-0.02f,0.25f);break;
                     case Action::ReverbUp:level(rt.wet,0.02f,0.25f);break;
@@ -747,7 +811,8 @@ int main(int argc,char** argv) {
                         rt.mixer.replaceSong(std::move(next));
                         rt.songPosition.store(0);
                         rt.session=roomtone::Handoff{};hasHandoff=false;
-                        rt.abLoop=false;rt.abStart=rt.abEnd=0;rt.repeat.store(false);
+                        rt.abLoop.store(false);rt.abStart.store(0);rt.abEnd.store(0);
+                        rt.practiceStartMarked=false;importedLyricOffset=0;rt.repeat.store(false);
                         selectedSongFile=std::filesystem::path(chosen).filename().u8string();
                         displayTitle=roomtone::desktop::wide(selectedSongFile);
                         safeRestart();
@@ -769,17 +834,20 @@ int main(int argc,char** argv) {
                                 std::min<std::uint64_t>(rt.songPosition.load()/48,720000));
                             loaded.loop=rt.repeat.load();
                             loaded.loopStartMs=static_cast<std::uint32_t>(
-                                std::min<std::uint64_t>(rt.abStart/48,720000));
+                                std::min<std::uint64_t>(rt.abStart.load()/48,720000));
                             loaded.loopEndMs=static_cast<std::uint32_t>(
-                                std::min<std::uint64_t>(rt.abEnd/48,720000));
+                                std::min<std::uint64_t>(rt.abEnd.load()/48,720000));
                         }
                         if(loaded.audioName!=selectedSongFile)
                             throw std::runtime_error("Session filename must match selected original instrumental");
                         safeStop();
                         rt.session=loaded;hasHandoff=true;rt.repeat.store(loaded.loop);
-                        rt.abStart=std::min<std::size_t>(loaded.loopStartMs*48ULL,rt.mixer.songFrames());
-                        rt.abEnd=std::min<std::size_t>(loaded.loopEndMs*48ULL,rt.mixer.songFrames());
-                        rt.abLoop=loaded.loop&&rt.abEnd>rt.abStart+12000;
+                        importedLyricOffset=loaded.offsetMs;
+                        const auto begin=std::min<std::size_t>(loaded.loopStartMs*48ULL,rt.mixer.songFrames());
+                        const auto finish=std::min<std::size_t>(loaded.loopEndMs*48ULL,rt.mixer.songFrames());
+                        rt.abLoop.store(false);rt.abStart.store(begin);rt.abEnd.store(finish);
+                        rt.abLoop.store(roomtone::practice::validAB(begin,finish,rt.mixer.songFrames()));
+                        rt.practiceStartMarked=rt.abLoop.load();
                         rt.seekRequest.store(std::min<std::uint64_t>(loaded.startMs*48ULL,rt.mixer.songFrames()));
                         displayTitle=roomtone::desktop::wide(loaded.title);
                         safeRestart();
@@ -897,7 +965,8 @@ int main(int argc,char** argv) {
                     rt.seekRequest.store(std::numeric_limits<std::uint64_t>::max());
                     rt.rewindRequest.store(false);
                     rt.mixer.replaceSong(std::move(next));
-                    rt.session=roomtone::Handoff{};rt.abLoop=false;rt.repeat.store(false);hasHandoff=false;
+                    rt.session=roomtone::Handoff{};rt.abLoop.store(false);rt.abStart.store(0);rt.abEnd.store(0);
+                    rt.practiceStartMarked=false;rt.repeat.store(false);hasHandoff=false;
                     rt.mixer.vocal.reset();
                     rt.songPosition.store(0);
                     if(startDevice())std::cout<<"New song loaded: MIC MUTED + SONG PAUSED. Press p to play.\n";
