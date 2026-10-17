@@ -85,3 +85,10 @@ Inspect the native import confirmation summary (original filename, title, lyric 
 4. Select a now-unavailable queued file and confirm it fails before replacing the currently loaded PCM, saved lyrics or queue index. Restore the source and retry explicitly.
 5. Repeat with real USB unplug/reroute and check the interrupted device is never revived without owner Reconnect. Verify focused F8 across queued-song/lyric/device dialogs, keyboard navigation, installed screen reader and high-DPI 1366×768 controls.
 6. Measure actual QuadCast/Pebble latency, acoustic feedback behavior, extended dropouts and browser U21 recording by hand. Synthetic CI cannot qualify these; A4 physical gate remains NO GO.
+
+## Effects and recovery owner acceptance — NOT_TESTED on physical hardware
+
+- Begin with wired headphones, low output volume and physically muted QuadCast. Under Effects, adjust original feedback/echo delay, review the read-only values (Ctrl+E), activate Dry vocal comparison (Ctrl+5) and Restore startup effects (Ctrl+6). Verify no unexpected rise in voice/music volume, that Dry keeps current gain/music values, and that Restore leaves music PAUSED and microphone MUTED. Actual acoustic risk and audio quality still require human listening.
+- With a valid original instrumental and .rtk/.lrc lyrics selected, disconnect the chosen USB input/output, import a local lyric session while offline, and confirm no automatic WASAPI restart. Use Audio > Device health (Ctrl+H) to inspect the actual state, then reconnect with Ctrl+R only after owner inspection and device reauthorization. Verify the offline-position seek survives manual recovery.
+- Check that both Effects/Audio menus and keyboard shortcuts work at 1366x768 and with NVDA/Narrator, that modal diagnostics do not conceal active voice monitoring and no private endpoint IDs or absolute audio paths appear.
+- Real QuadCast/Pebble input-to-speaker latency, feedback behavior, minimum practical 5-minute stability, hardware unplug/replug, recording U21 browser continuity and driver notifications remain NOT_TESTED / A4 NO GO.
