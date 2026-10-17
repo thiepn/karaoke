@@ -34,7 +34,8 @@ enum Action {
  ReverbDown,ReverbUp,EchoDown,EchoUp,MusicDown,MusicUp,
  ChooseSong,ChooseSession,ChooseDevices,Reconnect,EmergencyMute,GainDown,GainUp,
   PreviousLine,BrowseLyrics,MarkLoopA,MarkLoopB,ClearAB,ToggleAB,OffsetEarlier,OffsetLater,OffsetReset,SaveSession,AddQueueSong,ShowQueue,NextQueueSong,PreviousQueueSong,
-  RemoveQueuedSong,MoveQueuedUp,MoveQueuedDown,ClearPendingQueue
+  RemoveQueuedSong,MoveQueuedUp,MoveQueuedDown,ClearPendingQueue,
+  FeedbackDown,FeedbackUp,DelayShorter,DelayLonger,DryVoice,RestoreEffects,ShowEffects,ShowRecovery
 };
 struct Snapshot {
  std::wstring title,previous,current,next,input,output,notice;
@@ -43,7 +44,8 @@ struct Snapshot {
  bool loopMarked=false,loopEnabled=false;
  unsigned positionSeconds=0,durationSeconds=0;
  std::size_t queueIndex=0,queueTotal=0;
- float reverb=0,echo=0,music=0,gain=0;
+ float reverb=0,echo=0,music=0,gain=0,feedback=0;
+ unsigned delayMs=280;
  bool playing=false,microphone=false,repeat=false,interrupted=false,deviceActive=false,hasSong=false,hasLyrics=false;
 };
 struct Controller {
@@ -189,7 +191,7 @@ struct Window {
    case WM_CREATE:{
     self->minorFont=font(17);self->regular=font(17);self->large=font(30,true);
     self->heading=font(25,true);
-   HMENU menubar=CreateMenu(),practiceMenu=CreatePopupMenu(),songMenu=CreatePopupMenu();
+   HMENU menubar=CreateMenu(),practiceMenu=CreatePopupMenu(),songMenu=CreatePopupMenu(),effectsMenu=CreatePopupMenu(),recoveryMenu=CreatePopupMenu();
    if(menubar&&practiceMenu){
     const struct Entry {Action action;const wchar_t* title;} entries[]={
      {MarkLoopA,L"Mark loop start A\tCtrl+1"},
@@ -215,10 +217,30 @@ struct Window {
      AppendMenuW(songMenu,MF_STRING,ClearPendingQueue,L"Clear pending songs (keep current)");
      AppendMenuW(menubar,MF_POPUP,reinterpret_cast<UINT_PTR>(songMenu),L"&Songs");
     }
+    if(effectsMenu){
+     AppendMenuW(effectsMenu,MF_STRING,FeedbackDown,L"Echo feedback -2%"); 
+     AppendMenuW(effectsMenu,MF_STRING,FeedbackUp,L"Echo feedback +2%");
+     AppendMenuW(effectsMenu,MF_STRING,DelayShorter,L"Echo delay -20 ms");
+     AppendMenuW(effectsMenu,MF_STRING,DelayLonger,L"Echo delay +20 ms");
+     AppendMenuW(effectsMenu,MF_SEPARATOR,0,nullptr);
+     AppendMenuW(effectsMenu,MF_STRING,DryVoice,L"Dry vocal comparison (keep output gains)\tCtrl+5");
+     AppendMenuW(effectsMenu,MF_STRING,RestoreEffects,L"Restore original startup effects\tCtrl+6");
+     AppendMenuW(effectsMenu,MF_STRING,ShowEffects,L"Current DSP levels / bounds\tCtrl+E");
+     AppendMenuW(menubar,MF_POPUP,reinterpret_cast<UINT_PTR>(effectsMenu),L"&Effects");
+    }
+    if(recoveryMenu){
+     AppendMenuW(recoveryMenu,MF_STRING,ShowRecovery,L"Device health / recovery steps\tCtrl+H");
+     AppendMenuW(recoveryMenu,MF_STRING,ChooseDevices,L"Choose microphone / output\tCtrl+D");
+     AppendMenuW(recoveryMenu,MF_STRING,Reconnect,L"Owner reconnect (muted)\tCtrl+R");
+     AppendMenuW(recoveryMenu,MF_STRING,EmergencyMute,L"VOICE MUTE (focused window)\tF8");
+     AppendMenuW(menubar,MF_POPUP,reinterpret_cast<UINT_PTR>(recoveryMenu),L"&Audio");
+    }
     SetMenu(h,menubar);
    }else{
     if(practiceMenu)DestroyMenu(practiceMenu);
     if(songMenu)DestroyMenu(songMenu);
+    if(effectsMenu)DestroyMenu(effectsMenu);
+    if(recoveryMenu)DestroyMenu(recoveryMenu;
     if(menubar)DestroyMenu(menubar);
    }
     self->title=self->label(L"ROOMTONE",SS_LEFT,self->heading);
@@ -265,6 +287,14 @@ struct Window {
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::MoveQueuedDown,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::RemoveQueuedSong,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::ClearPendingQueue,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::FeedbackDown,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::FeedbackUp,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::DelayShorter,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::DelayLonger,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::DryVoice,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::RestoreEffects,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::ShowEffects,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::ShowRecovery,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::Play,BN_CLICKED),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::EmergencyMute,BN_CLICKED),0);
         PostMessageW(h,WM_CLOSE,0,0);
@@ -307,7 +337,7 @@ struct Window {
     else if(w==VK_F10)self->notify(Play);
     return 0;
    case WM_COMMAND:
-    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=138)
+    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=146)
      self->notify(static_cast<Action>(LOWORD(w)));
     return 0;
    case WM_CLOSE:
@@ -360,6 +390,10 @@ struct Window {
         case 'Q':shortcut=ShowQueue;break;
         case 'N':shortcut=NextQueueSong;break;
         case 'P':shortcut=PreviousQueueSong;break;
+        case '5':shortcut=DryVoice;break;
+        case '6':shortcut=RestoreEffects;break;
+        case 'E':shortcut=ShowEffects;break;
+        case 'H':shortcut=ShowRecovery;break;
        case VK_OEM_4:shortcut=OffsetEarlier;break;
        case VK_OEM_6:shortcut=OffsetLater;break;
        default:recognized=false;break;
