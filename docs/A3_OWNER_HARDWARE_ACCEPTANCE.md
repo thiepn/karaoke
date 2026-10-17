@@ -49,3 +49,10 @@ Physical QuadCast/Pebble behavior, genuine endpoint re-enumeration, acoustic fee
 - Import another .lrc while offline and while song is paused; ensure original song/position/A–B loop remain and mic/music never auto-enable. A canceled/invalid import must keep the former lyric session.
 - Reopen the original .rtk and verify exact original-audio filename checking, A–B loop restoration and browser-handoff transport semantics are unchanged.
 - These are native Windows owner workflows not physically qualified by Chromium or synthetic Win32 CI. A4 hardware acceptance remains NO GO.
+
+## A3/A4 native practice owner checks — NOT TESTED on hardware
+
+- Start with monitoring muted and wired headphones. From a loaded instrumental, mark A (Ctrl+1), seek or play at least 0.25 seconds onward and mark B (Ctrl+2). Toggle A-B repeat (Ctrl+4) while music paused; start music separately and verify actual loop with song fade-in and no microphone auto-enable.
+- Mark invalid B at or before A; the old valid state should not be silently replaced. Clear A-B (Ctrl+3) and confirm native Repeat reverts to whole-song semantics. Test song replacement and .rtk A-B restoration.
+- Import timed .rtk or .lrc and adjust lyric offset by ±100 ms, then reset to the imported offset. Ensure this shifts display/navigation but never alters audio samples or writes files. Test offline marker edits and reconnect at saved position with mic/music muted.
+- Keyboard practice actions and Windows 1366×768 menu accessibility need human testing; physical QuadCast/Pebble validation and real latency remain NO GO.

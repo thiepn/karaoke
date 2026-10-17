@@ -94,16 +94,25 @@ inline Handoff parseLrc(const std::string& data,const std::string& audioName,
   if(line.empty())continue;
   // Metadata is independent of the instrumental. [offset] follows the
   // browser parser: each following timestamp is adjusted immediately.
-  if(line.compare(0,4,"[ti:")==0&&line.back()==']'){
-   auto title=trimLrc(line.substr(4,line.size()-5));
-   if(title.size()>255||title.find_first_of("\r\n\t\x1b")!=std::string::npos)
-    throw std::invalid_argument("unsafe LRC title");
-   if(!title.empty())result.title=std::move(title);
-   continue;
-  }
-  if(line.compare(0,8,"[offset:")==0&&line.back()==']'){
-   currentOffset=parseOffset(trimLrc(line.substr(8,line.size()-9)));
-   continue;
+  // Match the browser's case-insensitive offset tag with spaces on
+  // either side of ':'; preserve standard title tags without HTML parsing.
+  if(line.front()=='['&&line.back()==']'){
+   const auto inner=line.substr(1,line.size()-2);
+   const auto colon=inner.find(':');
+   if(colon!=std::string::npos){
+    auto key=trimLrc(inner.substr(0,colon));
+    std::transform(key.begin(),key.end(),key.begin(),[](unsigned char c){
+     return static_cast<char>(std::tolower(c));});
+    const auto value=trimLrc(inner.substr(colon+1));
+    if(key=="ti"){
+     if(value.size()>255)throw std::invalid_argument("LRC title too long");
+     for(unsigned char c:value)if(c<0x20||c==0x7F)
+      throw std::invalid_argument("unsafe LRC title");
+     if(!value.empty())result.title=value;
+     continue;
+    }
+    if(key=="offset"){currentOffset=parseOffset(value);continue;}
+   }
   }
   std::vector<std::uint32_t> stamps;
   std::size_t pos=0;

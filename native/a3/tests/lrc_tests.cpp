@@ -25,7 +25,7 @@ int main(){
  need(roomtone::lyricJumpMs(doc,11000,true,30000)==13300,"original native lyric jump");
  need(roomtone::parseLrc("[01:04.123]Unicode \xE2\x9C\x93\n","song.mp3","Fallback")
        .lines[0].milliseconds==64123,"UTF-8 millisecond timestamp");
- need(roomtone::parseLrc("[00:02.5]Line\n[offset:250]\n[00:03]Next\n",
+ need(roomtone::parseLrc("[00:02.5]Line\n[OFFSET : 250]\n[00:03]Next\n",
                          "x.wav","Default").lines[1].milliseconds==3250,
       "in-file offset updates match source browser semantics");
  for(const auto& x:{"[00:60.1]Bad\n","[00:01.]Bad\n","[00:01.ab]Bad\n",

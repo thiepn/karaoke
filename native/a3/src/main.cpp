@@ -336,10 +336,10 @@ int main(int argc,char** argv) {
             if(!choose&&opt.guided){
                 if(opt.gui){
                     choose=MessageBoxW(nullptr,
-                         L"Import a downloaded ROOMTONE .rtk session with lyrics and timing?",
+                         L"Import a local .rtk session or standard .lrc timed lyrics file?",
                          L"ROOMTONE local handoff",MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2)==IDYES;
                 }else{
-                    std::cout<<"Import downloaded browser .rtk session? y/N: "<<std::flush;
+                    std::cout<<"Import local .rtk session or .lrc lyrics? y/N: "<<std::flush;
                     std::string answer;
                     if(!std::getline(std::cin,answer))return 0;
                     choose=answer=="y"||answer=="Y";
