@@ -18,6 +18,8 @@ add_executable(roomtone_a3_queue_tests tests/queue_tests.cpp)
 add_test(NAME native_owned_song_queue COMMAND roomtone_a3_queue_tests)
 add_executable(roomtone_a3_recovery_tests tests/recovery_tests.cpp)
 add_test(NAME native_device_recovery_policy COMMAND roomtone_a3_recovery_tests)
+add_executable(roomtone_a3_effect_controls_tests tests/effect_controls_tests.cpp)
+add_test(NAME native_original_effect_controls COMMAND roomtone_a3_effect_controls_tests)
 
 # Windows-only experimental executable; existing browser code remains unchanged.
 if(WIN32)
