@@ -34,7 +34,7 @@ int main(){
  need(!lyric_sections::choose(source,4,source.lines.size(),20*sec),
      "offset beyond original song duration refuses inverted A-B");
  source.offsetMs=-900;
- source.lines={{850,"Clamped"},{1100,"Just after"},{1500,"Clearly later"}};
+ source.lines={{850,"Clamped"},{1150,"Exactly 250 ms after"},{1500,"Clearly later"}};
  need(!lyric_sections::choose(source,0,1,2*sec),
      "exactly 250 ms violates original >250ms A-B contract");
  need(lyric_sections::choose(source,0,2,2*sec).has_value(),

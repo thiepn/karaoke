@@ -532,7 +532,7 @@ struct LyricChooser {
  std::wstring confirmText=L"Jump to line";
  std::optional<std::size_t> chosen;
  std::function<void()> emergencyMute; // focused modal only, never system-wide
- bool syntheticCancel=false,syntheticMute=false;
+ bool syntheticCancel=false,syntheticMute=false,syntheticAccept=false;
  static LRESULT CALLBACK proc(HWND h,UINT msg,WPARAM w,LPARAM l){
   auto* self=reinterpret_cast<LyricChooser*>(GetWindowLongPtrW(h,GWLP_USERDATA));
   if(msg==WM_NCCREATE){
@@ -564,6 +564,7 @@ struct LyricChooser {
     SetFocus(self->list);
     if(self->syntheticMute)PostMessageW(self->list,WM_KEYDOWN,VK_F8,0);
     if(self->syntheticCancel)PostMessageW(h,WM_CLOSE,0,0);
+    if(self->syntheticAccept)PostMessageW(h,WM_COMMAND,MAKEWPARAM(301,BN_CLICKED),0);
     return 0;
    }
    case WM_COMMAND:

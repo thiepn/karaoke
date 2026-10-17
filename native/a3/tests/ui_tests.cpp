@@ -8,7 +8,7 @@ int main(){
 #ifdef _WIN32
  try{
   roomtone::desktop::Window window;
-  unsigned snapshots=0,playEvents=0,muteEvents=0,seekEvents=0,lastSeek=0,topologyEvents=0,tickEvents=0,previousEvents=0,browseEvents=0,modalMuteEvents=0,deviceModalMuteEvents=0,queueModalMuteEvents=0,loopEvents=0,offsetEvents=0,saveEvents=0,queueActionEvents=0,manageQueueEvents=0,effectsEvents=0,recoveryEvents=0;
+  unsigned snapshots=0,playEvents=0,muteEvents=0,seekEvents=0,lastSeek=0,topologyEvents=0,tickEvents=0,previousEvents=0,browseEvents=0,modalMuteEvents=0,deviceModalMuteEvents=0,queueModalMuteEvents=0,loopEvents=0,offsetEvents=0,saveEvents=0,queueActionEvents=0,manageQueueEvents=0,effectsEvents=0,recoveryEvents=0,sectionEvents=0;
   window.syntheticTest=true;
   bool compactLayout=false;
   window.controller.snapshot=[&]{
@@ -43,6 +43,8 @@ int main(){
       action==roomtone::desktop::DryVoice||action==roomtone::desktop::RestoreEffects||
       action==roomtone::desktop::ShowEffects)++effectsEvents;
    if(action==roomtone::desktop::ShowRecovery)++recoveryEvents;
+   if(action==roomtone::desktop::ChooseLyricSection||action==roomtone::desktop::SeekLoopA||
+      action==roomtone::desktop::SeekLoopB)++sectionEvents;
    if(action==roomtone::desktop::RemoveQueuedSong||action==roomtone::desktop::MoveQueuedUp||
       action==roomtone::desktop::MoveQueuedDown||action==roomtone::desktop::ClearPendingQueue)++manageQueueEvents;
   };
@@ -115,8 +117,17 @@ int main(){
    picker.emergencyMute=[&]{++queueModalMuteEvents;};
    if(picker.run().has_value())throw std::runtime_error("Queue cancel changed current song");
   }
+  // Exercise original Windows source lyric LISTBOX acceptance as well as
+  // cancellation. No audio callback, artificial source timestamps or relay.
+  {
+   roomtone::desktop::LyricChooser chooser;
+   std::vector<std::wstring> lines{L"1. Original verse",L"2. Original chorus",L"3. End"};
+   chooser.rows=&lines;chooser.current=1;chooser.syntheticAccept=true;
+   const auto choice=chooser.run();
+   if(!choice||*choice!=1)throw std::runtime_error("Native authored section picker accepted wrong cue");
+  }
   const int result=window.run();
-  if(result!=0||snapshots==0||playEvents!=1||muteEvents!=1||previousEvents!=1||browseEvents!=1||loopEvents!=1||offsetEvents!=1||saveEvents!=1||queueActionEvents!=4||manageQueueEvents!=4||effectsEvents!=7||recoveryEvents!=1||deviceModalMuteEvents!=1||queueModalMuteEvents!=1||modalMuteEvents!=1||!compactLayout||topologyEvents<1||tickEvents==0||seekEvents!=1||lastSeek!=43)
+  if(result!=0||snapshots==0||playEvents!=1||muteEvents!=1||previousEvents!=1||browseEvents!=1||loopEvents!=1||offsetEvents!=1||saveEvents!=1||queueActionEvents!=4||manageQueueEvents!=4||effectsEvents!=7||recoveryEvents!=1||sectionEvents!=3||deviceModalMuteEvents!=1||queueModalMuteEvents!=1||modalMuteEvents!=1||!compactLayout||topologyEvents<1||tickEvents==0||seekEvents!=1||lastSeek!=43)
    throw std::runtime_error("in-process control/seek message, modal lifetime and focus");
   if(roomtone::desktop::wide("Nacht \xC3\xBC""ber")!=L"Nacht \xFC""ber")
    throw std::runtime_error("UTF-8 lyric display decoding");
