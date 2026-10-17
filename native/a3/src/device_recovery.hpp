@@ -75,6 +75,23 @@ inline bool selectedName(int selected,const std::vector<std::string>& visible,st
 }
 }
 namespace roomtone::recovery {
+// Software-only owner authorization gate for the EXISTING WASAPI duplex device.
+// Neither hotplug, an offline chooser cancellation, nor a rejected candidate
+// is permission to restart capture/playback.
+enum class DriverState { Ready, Interrupted, OwnerSuspended, Offline };
+inline DriverState state(bool active,bool interrupted,bool suspended) noexcept {
+ if(suspended)return DriverState::OwnerSuspended;
+ if(interrupted)return DriverState::Interrupted;
+ return active?DriverState::Ready:DriverState::Offline;
+}
+enum class DeviceChoice { Canceled, Rejected, Revalidated };
+inline bool reopenAfterChooser(bool previouslyReady,DeviceChoice decision) noexcept {
+ return decision==DeviceChoice::Revalidated ||
+        (decision==DeviceChoice::Canceled&&previouslyReady);
+}
+inline bool ownerMayReconnect(bool explicitlyApproved) noexcept{
+ return explicitlyApproved;
+}
 inline constexpr std::uint64_t NoSeek=std::numeric_limits<std::uint64_t>::max();
 struct Frozen {std::uint64_t frames;bool pendingSeek;bool pendingRewind;};
 // Call ONLY after a successfully opened device has been uninitialized and

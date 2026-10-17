@@ -62,5 +62,29 @@ int main(){
  position.store(10000);seek.store(800000);
  const auto clamped=freeze(seek,rewind,position,48000);
  need(clamped.frames==48000&&seek.load()==48000,"seek bounded to current song");
+ using roomtone::recovery::DeviceChoice;
+ using roomtone::recovery::DriverState;
+ need(roomtone::recovery::state(true,false,false)==DriverState::Ready,
+      "valid running audio has ready status");
+ need(roomtone::recovery::state(true,true,false)==DriverState::Interrupted,
+      "interrupted callback cannot advertise ready");
+ need(roomtone::recovery::state(false,false,true)==DriverState::OwnerSuspended,
+      "owner suspension differs from missing hardware");
+ need(roomtone::recovery::state(false,true,true)==DriverState::OwnerSuspended,
+      "owner suspension stays explicit despite old driver issue");
+ need(roomtone::recovery::state(false,false,false)==DriverState::Offline,
+      "offline is not a trusted ready device");
+ for(bool ready:{false,true}){
+  need(roomtone::recovery::reopenAfterChooser(ready,DeviceChoice::Revalidated),
+       "newly verified owner selection authorizes muted opening");
+  need(!roomtone::recovery::reopenAfterChooser(ready,DeviceChoice::Rejected),
+       "stale/ambiguous device selection never restarts either old/new endpoint");
+  need(roomtone::recovery::reopenAfterChooser(ready,DeviceChoice::Canceled)==ready,
+       "cancel only reopens an actual previously ready route");
+ }
+ need(!roomtone::recovery::ownerMayReconnect(false)&&
+      roomtone::recovery::ownerMayReconnect(true),
+      "reconnect requires affirmative local owner consent");
+ std::cout<<"PASS owner-approved device recovery, deliberate suspension, cancellation and endpoint fail-closed policy\\n";
  std::cout<<"PASS native recovery policy: duplicate/missing identity refusal, reordering, default, pending seek/rewind and clamped resume\n";
 }
