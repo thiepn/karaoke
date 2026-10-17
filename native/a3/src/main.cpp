@@ -11,6 +11,7 @@
 #include "session_export.hpp"
 #include "session_io_win.hpp"
 #include "song_queue.hpp"
+#include "rehearsal_cues.hpp"
 #include "desktop_ui.hpp"
 #include "device_recovery.hpp"
 #include "effect_controls.hpp"
@@ -478,6 +479,7 @@ int main(int argc,char** argv) {
         std::wstring displayTitle=hasHandoff?roomtone::desktop::wide(imported.title)
              :roomtone::desktop::wide(selectedSongFile);
         Runtime rt(opt,std::move(song));
+        roomtone::rehearsal::Cues rehearsalCues; // active original audio, owner thread only
         int importedLyricOffset=0;
         if(hasHandoff){
             rt.session=std::move(imported);
@@ -609,6 +611,7 @@ int main(int argc,char** argv) {
                 state.hasSession=hasHandoff;
                 state.importedOffset=importedLyricOffset;
                 state.frames=rt.songPosition.load();
+                state.rehearsalCues=rehearsalCues.items();
                 state.repeat=rt.repeat.load();
                 state.loopA=rt.abStart.load();state.loopB=rt.abEnd.load();
                 state.loopValid=rt.abLoop.load();
@@ -633,6 +636,7 @@ int main(int argc,char** argv) {
                 rt.seekRequest.store(roomtone::recovery::NoSeek);
                 rt.rewindRequest.store(false);
                 rt.mixer.replaceSong(std::move(decoded));
+                rehearsalCues.clear(); // no original audio cue crosses source selection
                 rt.songPosition.store(0);
                 rt.session=roomtone::Handoff{};hasHandoff=false;
                 rt.abLoop.store(false);rt.abStart.store(0);rt.abEnd.store(0);
@@ -646,6 +650,7 @@ int main(int argc,char** argv) {
                     const auto frames=std::min<std::uint64_t>(resume->frames,rt.mixer.songFrames());
                     rt.songPosition.store(frames);
                     rt.seekRequest.store(frames); // consumed on first reopened callback
+                    rehearsalCues.restore(resume->rehearsalCues,rt.mixer.songFrames());
                     rt.session=resume->hasSession?resume->session:roomtone::Handoff{};
                     hasHandoff=resume->hasSession;
                     importedLyricOffset=resume->importedOffset;
@@ -1043,6 +1048,99 @@ int main(int argc,char** argv) {
                         if(!ready)rt.songPosition.store(*cue);
                         notice=toB?L"Paused at marker B; microphone MUTED."
                             :L"Paused at marker A; microphone MUTED.";
+                        break;
+                    }
+                    case Action::MarkRehearsalCue:{
+                        if(!rt.mixer.hasSong()){
+                            notice=L"Load a local instrumental before marking rehearsal cues.";break;
+                        }
+                        // Pending owner seek/restart wins over the possibly
+                        // stale published callback frame (no WASAPI stop needed).
+                        const auto pending=rt.seekRequest.load();
+                        const auto frame=rt.rewindRequest.load()?std::uint64_t{0}:
+                          pending==roomtone::recovery::NoSeek?rt.songPosition.load():pending;
+                        if(rehearsalCues.add(frame,rt.mixer.songFrames()))
+                            notice=L"Rehearsal cue "+std::to_wstring(rehearsalCues.size())+
+                                L"/12 marked on THIS original song at "+
+                                roomtone::desktop::clock(static_cast<unsigned>(frame/48000))+
+                                L". No playback or audio settings changed.";
+                        else notice=L"Cue refused: already within 100 ms of a cue, at song end, or 12-cue limit.";
+                        break;
+                    }
+                    case Action::BrowseRehearsalCues:case Action::RemoveRehearsalCue:{
+                        if(!rt.mixer.hasSong()||!rehearsalCues.size()){
+                            notice=L"No rehearsal cues for this original song. Mark one with Ctrl+B.";break;
+                        }
+                        // Queue-owned positions and original .rtk/.lrc lyric
+                        // context only; don't serialize new records or paths.
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        std::vector<std::wstring> lines;
+                        lines.reserve(rehearsalCues.size());
+                        for(auto frame:rehearsalCues.items()){
+                            std::wstring row=roomtone::desktop::clock(
+                                static_cast<unsigned>(frame/48000));
+                            if(hasHandoff&&!rt.session.lines.empty()){
+                                const auto ms=static_cast<std::uint32_t>(
+                                    std::min<std::uint64_t>(frame/48,720000));
+                                const auto index=roomtone::lyricIndexAt(rt.session,ms);
+                                if(index<rt.session.lines.size()){
+                                    row+=L" | "+roomtone::desktop::wide(rt.session.lines[index].text);
+                                }
+                            }
+                            if(row.size()>240)row.resize(240);
+                            lines.push_back(std::move(row));
+                        }
+                        const bool removing=action==Action::RemoveRehearsalCue;
+                        const auto selected=roomtone::desktop::selectQueuedSong(
+                            lines,0,window.hwnd,[&]{rt.monitoring.store(false);},
+                            removing?L"ROOMTONE | Remove original rehearsal cue":
+                                     L"ROOMTONE | Jump to original rehearsal cue",
+                            removing?L"Choose cue to remove from RAM. Escape cancels. F8 mutes.":
+                                     L"Choose source cue to pause and jump. Escape cancels. F8 mutes.",
+                            removing?L"Choose to remove":L"Pause and jump");
+                        if(!selected){
+                            notice=L"Rehearsal cue selection canceled; original song stays MUTED/PAUSED.";
+                            break;
+                        }
+                        const auto cue=rehearsalCues.at(*selected,rt.mixer.songFrames());
+                        if(!cue){notice=L"Invalid cue or changed song duration. No seek.";break;}
+                        if(removing){
+                            const auto answer=MessageBoxW(window.hwnd,
+                                L"Remove this position from this song's in-memory rehearsal cues?\n"
+                                L"No local file or .rtk session will be changed.",
+                                L"ROOMTONE | Confirm cue removal",
+                                MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2);
+                            if(answer!=IDYES){
+                                notice=L"Rehearsal cue removal canceled.";break;
+                            }
+                            if(!rehearsalCues.remove(*selected))
+                                throw std::runtime_error("Owner cue index was invalid");
+                            notice=L"Rehearsal position removed from current local song only.";
+                            break;
+                        }
+                        rt.rewindRequest.store(false);
+                        rt.seekRequest.store(*cue);
+                        if(!deviceActive||rt.interrupted.load())rt.songPosition.store(*cue);
+                        notice=L"Paused and muted at original source rehearsal cue "+
+                            roomtone::desktop::clock(static_cast<unsigned>(*cue/48000))+
+                            L". Re-enable music or monitoring explicitly.";
+                        break;
+                    }
+                    case Action::ClearRehearsalCues:{
+                        if(!rehearsalCues.size()){
+                            notice=L"No rehearsal cues to clear for this song.";break;
+                        }
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        if(MessageBoxW(window.hwnd,
+                            L"Clear ALL in-memory rehearsal cues for this song?\n"
+                            L"Other queued songs retain their own cues. No files are modified.",
+                            L"ROOMTONE | Clear song cues",
+                            MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2)!=IDYES){
+                            notice=L"Rehearsal cues retained; audio MUTED/PAUSED.";break;
+                        }
+                        const auto removed=rehearsalCues.clear();
+                        notice=L"Cleared "+std::to_wstring(removed)+
+                            L" original-source rehearsal cue(s).";
                         break;
                     }
                     case Action::MarkLoopA:{

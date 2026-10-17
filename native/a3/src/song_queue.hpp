@@ -1,6 +1,7 @@
 #pragma once
 #include "handoff.hpp"
 #include "practice.hpp"
+#include "rehearsal_cues.hpp"
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -19,6 +20,7 @@ struct Practice {
  Handoff session;
  std::string displayTitle;
  std::uint64_t frames=0,loopA=0,loopB=0;
+ std::vector<std::uint64_t> rehearsalCues; // never written to browser/.rtk, original queue owns RAM
  int importedOffset=0;
  bool hasSession=false,repeat=false,loopValid=false,startMarked=false;
 };
