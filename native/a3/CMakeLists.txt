@@ -14,6 +14,8 @@ add_executable(roomtone_a3_lrc_tests tests/lrc_tests.cpp)
 add_test(NAME native_direct_lrc_import COMMAND roomtone_a3_lrc_tests)
 add_executable(roomtone_a3_practice_tests tests/practice_tests.cpp)
 add_test(NAME native_practice_loop_policy COMMAND roomtone_a3_practice_tests)
+add_executable(roomtone_a3_queue_tests tests/queue_tests.cpp)
+add_test(NAME native_owned_song_queue COMMAND roomtone_a3_queue_tests)
 add_executable(roomtone_a3_recovery_tests tests/recovery_tests.cpp)
 add_test(NAME native_device_recovery_policy COMMAND roomtone_a3_recovery_tests)
 
