@@ -1,5 +1,6 @@
 #include "../src/song_queue.hpp"
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 static void need(bool value,const char* reason){if(!value)throw std::runtime_error(reason);}
@@ -56,5 +57,29 @@ int main(){
       "clear pending keeps only active original source");
  need(list.practice(0)->session.lines[0].text=="First","clear pending retains active state");
  need(list.reset("fresh.wav")&&!list.practice(0),"explicit new queue destroys prior local practice");
+ // A previously authorized FULL pathname can now point to changed audio.
+ // Refuse its stale lyric/practice cache using observed version evidence.
+ const auto fixture=std::filesystem::temp_directory_path()/"roomtone-queue-version-fixture.wav";
+ if(std::filesystem::exists(fixture))throw std::runtime_error("refusing existing test fixture");
+ try{
+  {std::ofstream f(fixture,std::ios::binary);f<<"original pcm"; }
+  roomtone::song_queue::Queue owned(fixture);
+  roomtone::song_queue::Practice history;
+  history.hasSession=true;history.session.audioName=fixture.filename().u8string();
+  history.frames=48000;history.session.lines={{1000,"Source lyric"}};
+  need(owned.rememberCurrent(history),"bound session cache");
+  const auto original=roomtone::song_queue::observe(fixture);
+  need(original.has_value()&&owned.verifiedPractice(0,*original).has_value(),
+       "original observed file version authorizes its own snapshot");
+  {std::ofstream f(fixture,std::ios::binary|std::ios::trunc);f<<"replacement audio data"; }
+  const auto replaced=roomtone::song_queue::observe(fixture);
+  need(replaced.has_value()&&!original->same(*replaced),"source metadata changed");
+  need(!owned.verifiedPractice(0,*replaced),"stale practice cannot attach to replacement");
+  need(owned.practice(0).has_value(),"owner cache untouched until explicit queue reset");
+  need(owned.commitVerified(0,*replaced),"new decoded source can be explicitly bound");
+  need(owned.verifiedPractice(0,*replaced).has_value(),
+       "explicit post-decode source version is respected");
+ }catch(...){std::filesystem::remove(fixture);throw;}
+ std::filesystem::remove(fixture);
  std::cout<<"PASS source-owned volatile native queue, owner transitions, bounds, duplicate rejection, no file writes.\n";
 }

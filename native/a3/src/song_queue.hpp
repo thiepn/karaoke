@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <system_error>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -21,6 +22,24 @@ struct Practice {
  int importedOffset=0;
  bool hasSession=false,repeat=false,loopValid=false,startMarked=false;
 };
+// File size + last-modified are non-cryptographic source-version guards.
+// They prevent ordinary accidental reattachment of cached practice after
+// a song was edited/replaced at the same pathname. They are NOT content auth.
+struct FileVersion {
+ std::uintmax_t size=0;
+ std::filesystem::file_time_type modified{};
+ bool same(const FileVersion& other)const noexcept{
+  return size==other.size&&modified==other.modified;
+ }
+};
+inline std::optional<FileVersion> observe(const std::filesystem::path& path){
+ std::error_code err;
+ const auto size=std::filesystem::file_size(path,err);
+ if(err)return std::nullopt;
+ const auto modified=std::filesystem::last_write_time(path,err);
+ if(err)return std::nullopt;
+ return FileVersion{size,modified};
+}
 class Queue {
 public:
  static constexpr std::size_t MaxSongs=24;
@@ -29,13 +48,13 @@ public:
  }
  bool reset(const std::filesystem::path& file){
   if(file.empty()||file.filename().empty())return false;
-  items_={{file,std::nullopt}};current_=0;return true;
+  items_={{file,std::nullopt,observe(file)}};current_=0;return true;
  }
  bool add(const std::filesystem::path& file){
   if(file.empty()||file.filename().empty()||items_.size()>=MaxSongs)return false;
   if(std::any_of(items_.begin(),items_.end(),[&](const Entry& e){return e.file==file;}))
    return false;
-  items_.push_back({file,std::nullopt});return true;
+  items_.push_back({file,std::nullopt,std::nullopt});return true;
  }
  std::size_t size()const noexcept{return items_.size();}
  std::size_t currentIndex()const noexcept{return current_;}
@@ -55,6 +74,15 @@ public:
  std::optional<Practice> practice(std::size_t index)const{
   return items_.at(index).saved;
  }
+ // Call only after a fresh pre-decode version check. Path equality alone is
+ // insufficient for reusing previously imported lyrics on changed source PCM.
+ std::optional<Practice> verifiedPractice(std::size_t index,
+                                      const FileVersion& observed)const{
+  const auto& entry=items_.at(index);
+  if(!entry.loadedVersion||!entry.loadedVersion->same(observed))
+   return std::nullopt;
+  return entry.saved;
+ }
  bool rememberCurrent(const Practice& data){
   if(items_.empty())return false;
   // Source owner names are checked against the original local filename;
@@ -67,6 +95,11 @@ public:
  bool commit(std::size_t index)noexcept{
   if(!canSelect(index))return false;
   current_=index;return true;
+ }
+ bool commitVerified(std::size_t index,const FileVersion& version)noexcept{
+  if(!commit(index))return false;
+  items_[index].loadedVersion=version;
+  return true;
  }
  // Explicit queue-management only; don't implicitly switch PCM when deleting.
  bool remove(std::size_t index){
@@ -96,6 +129,7 @@ private:
  struct Entry{
   std::filesystem::path file;
   std::optional<Practice> saved;
+  std::optional<FileVersion> loadedVersion;
  };
  std::vector<Entry> items_;
  std::size_t current_=0;
