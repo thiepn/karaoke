@@ -29,6 +29,7 @@ int main(){
  need(list.size()==Queue::MaxSongs,"reject no state loss");
  roomtone::song_queue::Practice owner;
  owner.frames=144000;owner.loopA=48000;owner.loopB=96000;
+ owner.rehearsalCues={24000,96000,144000};
  owner.repeat=true;owner.loopValid=true;owner.startMarked=true;
  owner.hasSession=true;owner.session.audioName="one.wav";
  owner.session.title="Owner source";
@@ -42,10 +43,12 @@ int main(){
  need(!list.rememberCurrent(wrong),"mismatched audio identity not cached");
  need(list.commit(0),"return to original");
  auto recovered=list.practice(0);
- need(recovered&&recovered->frames==144000&&recovered->session.lines.size()==2&&
+ need(recovered&&recovered->frames==144000&&recovered->rehearsalCues.size()==3&&
+      recovered->rehearsalCues[1]==96000&&recovered->session.lines.size()==2&&
       recovered->session.offsetMs==-250&&recovered->repeat,"original source state recovered");
  need(list.move(0,1)&&list.currentIndex()==1,"current entry reorder tracks identity");
- need(list.at(1).filename()=="one.wav"&&list.practice(1)->frames==144000,
+ need(list.at(1).filename()=="one.wav"&&list.practice(1)->frames==144000&&
+      list.practice(1)->rehearsalCues[2]==144000,
       "reorder retains original source snapshot");
  need(!list.remove(1)&&list.currentIndex()==1,"active source cannot be removed");
  need(list.remove(0)&&list.currentIndex()==0,"earlier inactive removal updates current index");
@@ -75,6 +78,7 @@ int main(){
   const auto replaced=roomtone::song_queue::observe(fixture);
   need(replaced.has_value()&&!original->same(*replaced),"source metadata changed");
   need(!owned.verifiedPractice(0,*replaced),"stale practice cannot attach to replacement");
+  need(owned.practice(0)->frames==48000,"cache is in-memory until source is rebound");
   need(owned.practice(0).has_value(),"owner cache untouched until explicit queue reset");
   need(owned.commitVerified(0,*replaced),"new decoded source can be explicitly bound");
   need(!owned.verifiedPractice(0,*replaced),
