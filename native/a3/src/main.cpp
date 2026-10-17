@@ -1,0 +1,1643 @@
+// ROOMTONE A3: minimal Windows-native experimental microphone monitor.
+// This is a standalone WASAPI full-duplex executable, NOT a replacement or
+// wrapped version of the web application. No accounts, file access or uploads.
+#define MINIAUDIO_IMPLEMENTATION
+#include "miniaudio.h"
+#include "karaoke_mix.hpp"
+#include "transport.hpp"
+#include "handoff.hpp"
+#include "lrc.hpp"
+#include "practice.hpp"
+#include "session_export.hpp"
+#include "session_io_win.hpp"
+#include "song_queue.hpp"
+#include "desktop_ui.hpp"
+#include "device_recovery.hpp"
+#include "effect_controls.hpp"
+#include "lyric_sections.hpp"
+#include <algorithm>
+#include <cstdint>
+#include <sstream>
+#include <utility>
+#include <vector>
+#include <limits>
+#include <filesystem>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <commdlg.h>
+#endif
+#include <atomic>
+#include <cmath>
+#include <cstdlib>
+#include <exception>
+#include <iostream>
+#include <stdexcept>
+#include <string>
+
+struct Options {
+    int input = -1;   // -1 uses Windows default
+    int output = -1;
+    unsigned period = 240;  // requested five milliseconds at 48 kHz
+    float wet = 0.12f;
+    float gain = 0.18f;
+    float echo=0.12f,feedback=0.15f,musicGain=0.2f;
+    unsigned echoMs=280;
+    std::string song,handoffFile,lrcFile;
+    bool list = false,probeSong=false,pickSong=false,guided=false,probeHandoff=false,probeLrc=false,pickHandoff=false,gui=false;
+};
+static int readInteger(const std::string& s) {
+    std::size_t count=0;
+    const int n=std::stoi(s,&count);
+    if(count!=s.size())throw std::invalid_argument("invalid integer: "+s);
+    return n;
+}
+static float readFloat(const std::string& s) {
+    std::size_t count=0;
+    const float x=std::stof(s,&count);
+    if(count!=s.size()||!std::isfinite(x))throw std::invalid_argument("invalid floating point number: "+s);
+    return x;
+}
+static Options parse(int argc,char** argv) {
+    Options opt;
+    for(int i=1;i<argc;++i) {
+        const std::string key=argv[i];
+        if(key=="--list"){opt.list=true;continue;}
+        if(key=="--gui"){opt.gui=true;continue;}
+        if(key=="--console"){opt.gui=false;continue;}
+        if(key=="--probe-song"){opt.probeSong=true;continue;}
+        if(key=="--pick-song"){opt.pickSong=true;continue;}
+        if(key=="--setup"){opt.guided=true;continue;}
+        if(key=="--probe-handoff"){opt.probeHandoff=true;continue;}
+        if(key=="--probe-lrc"){opt.probeLrc=true;continue;}
+        if(key=="--pick-handoff"){opt.pickHandoff=true;continue;}
+        if(key=="--help"||key=="-h"){
+            std::cout<<"ROOMTONE A3 Windows WASAPI proof-of-concept\n"
+                     <<"  --list  list device indices (0-based)\n"
+                     <<"  --input N --output N  select indices from --list\n"
+                     <<"  --period 120|240|480  requested buffer frames at 48000 Hz\n"
+                     <<"  --wet 0..0.25  short parallel reverb, default 0.12\n"
+                     <<"  --gain 0..0.35  output level, default 0.18\n"
+                     <<"  --song PATH  local MP3/WAV/FLAC instrumental (12-minute limit)\n"
+                     <<"  --probe-song  decode local track without opening devices\n"
+                     <<"  --pick-song  Windows file chooser (Unicode paths)\n"
+                     <<"  --handoff PATH  import offline browser lyrics/position (.rtk)\n"
+                     <<"  --pick-handoff  choose downloaded .rtk in Windows file picker\n"
+                     <<"  --probe-handoff  validate .rtk WITHOUT opening devices\n"
+                     <<"  --lrc PATH  attach standard local .lrc lyrics to selected song\n"
+                     <<"  --probe-lrc  validate --lrc file WITHOUT opening devices\n"
+                     <<"  GUI: Practice > Save session, or console: save FILE.rtk\n"
+                     <<"  --setup  guided mic/speaker device selection\n"
+                     <<"  --gui  in-process Win32 karaoke view\n"
+                     <<"  --console  original command-line controls\n"
+                     <<"  --echo 0..0.35 --feedback 0..0.35 --echo-ms 80..550\n"
+                     <<"  --music 0..0.50  backing track volume\n"
+                     <<"Starts MIC MUTED and SONG PAUSED. Commands m/p/r, status,\n"
+                     <<"seek SECONDS (+/- relative), loop on/off, reconnect,\n"
+                     <<"wet/gain/echo/feedback/echo-ms/music NUMBER; q to quit.\n";
+            std::exit(0);
+        }
+        if(i+1>=argc)throw std::invalid_argument("missing value for "+key);
+        const std::string value=argv[++i];
+        if(key=="--input") opt.input=readInteger(value);
+        else if(key=="--output") opt.output=readInteger(value);
+        else if(key=="--period") opt.period=static_cast<unsigned>(readInteger(value));
+        else if(key=="--wet") opt.wet=readFloat(value);
+        else if(key=="--gain") opt.gain=readFloat(value);
+        else if(key=="--song") opt.song=value;
+        else if(key=="--handoff") opt.handoffFile=value;
+        else if(key=="--lrc") opt.lrcFile=value;
+        else if(key=="--echo") opt.echo=readFloat(value);
+        else if(key=="--feedback") opt.feedback=readFloat(value);
+        else if(key=="--echo-ms") {const int n=readInteger(value);if(n<0)throw std::invalid_argument("negative echo-ms");opt.echoMs=static_cast<unsigned>(n);}
+        else if(key=="--music") opt.musicGain=readFloat(value);
+        else throw std::invalid_argument("unknown argument: "+key);
+    }
+    if(opt.input < -1 || opt.output < -1)throw std::invalid_argument("device index must be -1 or greater");
+    if(opt.period!=120 && opt.period!=240 && opt.period!=480)
+        throw std::invalid_argument("period must be 120, 240 or 480 frames");
+    if(opt.wet<0||opt.wet>0.25f||opt.gain<0||opt.gain>0.35f||
+       opt.echo<0||opt.echo>0.35f||opt.feedback<0||opt.feedback>0.35f||
+       opt.echoMs<80||opt.echoMs>550||opt.musicGain<0||opt.musicGain>0.50f)
+        throw std::invalid_argument("audio levels outside safe test range");
+    if(!opt.handoffFile.empty()&&!opt.lrcFile.empty())throw std::invalid_argument("choose one .rtk or .lrc source");
+    if(opt.probeHandoff&&opt.probeLrc)throw std::invalid_argument("select one offline lyric probe");
+    if(opt.probeLrc&&(opt.lrcFile.empty()||opt.pickSong||opt.pickHandoff||opt.guided))
+        throw std::invalid_argument("--probe-lrc needs --lrc PATH without interactive flags");
+    if(opt.probeHandoff&&(opt.handoffFile.empty()||opt.pickHandoff||opt.pickSong||opt.guided))throw std::invalid_argument("--probe-handoff requires --handoff PATH without interactive flags");
+    if(opt.probeSong&&(opt.song.empty()||opt.pickSong||opt.guided))
+        throw std::invalid_argument("--probe-song needs --song PATH without --setup/--pick-song");
+    return opt;
+}
+
+// Decode local backing tracks entirely before audio device startup.
+// All potentially blocking file access and allocations are outside callback.
+static std::vector<float> loadSong(const std::string& path,const std::wstring& widePath={}) {
+    if(path.empty()&&widePath.empty())return {};
+    ma_decoder_config config=ma_decoder_config_init(ma_format_f32,2,roomtone::VocalDsp::kSampleRate);
+    ma_decoder decoder{};
+    const ma_result decoderStatus=widePath.empty()
+        ? ma_decoder_init_file(path.c_str(),&config,&decoder)
+        : ma_decoder_init_file_w(widePath.c_str(),&config,&decoder);
+    if(decoderStatus!=MA_SUCCESS)
+        throw std::runtime_error("Could not decode selected local instrumental file");
+    constexpr ma_uint64 maxFrames=static_cast<ma_uint64>(roomtone::VocalDsp::kSampleRate)*60*12;
+    ma_uint64 frames=0;
+    const ma_result sizeStatus=ma_decoder_get_length_in_pcm_frames(&decoder,&frames);
+    if(sizeStatus!=MA_SUCCESS||frames==0||frames>maxFrames){
+        ma_decoder_uninit(&decoder);
+        throw std::runtime_error("Song is empty, duration unknown or longer than 12 minutes");
+    }
+    std::vector<float> samples(static_cast<std::size_t>(frames)*2);
+    ma_uint64 read=0;
+    const ma_result result=ma_decoder_read_pcm_frames(&decoder,samples.data(),frames,&read);
+    ma_decoder_uninit(&decoder);
+    if((result!=MA_SUCCESS&&result!=MA_AT_END)||read==0)
+        throw std::runtime_error("Could not read backing track frames");
+    samples.resize(static_cast<std::size_t>(read)*2);
+    for(float& v:samples)if(!std::isfinite(v))v=0;
+    return samples;
+}
+#ifdef _WIN32
+// Optional native file dialog. Does not open a server or expose local file paths
+// to the browser; uses Unicode Windows filesystem APIs.
+static std::wstring chooseSongFile() {
+    wchar_t file[32768]={};
+    OPENFILENAMEW dialog{};
+    dialog.lStructSize=sizeof(dialog);
+    dialog.lpstrFile=file;
+    dialog.nMaxFile=static_cast<DWORD>(sizeof(file)/sizeof(file[0]));
+    dialog.lpstrFilter=L"Audio files (*.wav;*.mp3;*.flac)\0*.wav;*.mp3;*.flac\0All files (*.*)\0*.*\0";
+    dialog.Flags=OFN_EXPLORER|OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
+    if(GetOpenFileNameW(&dialog))return file;
+    const DWORD error=CommDlgExtendedError();
+    if(error!=0)throw std::runtime_error("Windows file chooser failed (code "+std::to_string(error)+")");
+    return {}; // Cancelled by user.
+}
+static std::wstring chooseHandoffFile(){
+ wchar_t filename[32768]={};
+ OPENFILENAMEW d{};
+ d.lStructSize=sizeof(d);d.lpstrFile=filename;
+ d.nMaxFile=static_cast<DWORD>(sizeof(filename)/sizeof(filename[0]));
+ d.lpstrFilter=L"ROOMTONE timed lyrics (*.rtk;*.lrc)\0*.rtk;*.lrc\0ROOMTONE sessions (*.rtk)\0*.rtk\0Standard lyrics (*.lrc)\0*.lrc\0All files\0*.*\0";
+ d.Flags=OFN_EXPLORER|OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
+ if(GetOpenFileNameW(&d))return filename;
+ const DWORD err=CommDlgExtendedError();
+ if(err)throw std::runtime_error("Could not open native session picker (error "+std::to_string(err)+")");
+ return {}; // User cancelled, no session imported.
+}
+// Save is an explicit owner action. Neither the application nor a background
+// callback may write any file without this OS-mediated selection.
+static std::wstring chooseSessionSaveFile() {
+ wchar_t filename[32768]={};
+ OPENFILENAMEW d{};
+ d.lStructSize=sizeof(d);d.lpstrFile=filename;
+ d.nMaxFile=static_cast<DWORD>(sizeof(filename)/sizeof(filename[0]));
+ d.lpstrFilter=L"ROOMTONE practice sessions (*.rtk)\0*.rtk\0";
+ d.lpstrDefExt=L"rtk";
+ d.Flags=OFN_EXPLORER|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
+ if(GetSaveFileNameW(&d)){
+  std::wstring extension=std::filesystem::path(filename).extension().wstring();
+  std::transform(extension.begin(),extension.end(),extension.begin(),[](wchar_t c){
+   return c>=L'A'&&c<=L'Z'?static_cast<wchar_t>(c-L'A'+L'a'):c;
+  });
+  if(extension!=L".rtk")throw std::invalid_argument("Practice export must use .rtk filename");
+  return filename;
+ }
+ const DWORD error=CommDlgExtendedError();
+ if(error)throw std::runtime_error("Native save dialog failed (error "+std::to_string(error)+")");
+ return {};
+}
+// CREATE_NEW makes export fail closed instead of overwriting an unrelated
+// user document or a concurrently changed prior export. No persistent
+// background autosave, temp database, credential or account.
+static int chooseDeviceIndex(const char* label,ma_device_info* list,ma_uint32 count){
+    for(;;){
+        std::cout<<label<<" device (-1 or Enter = Windows default):\n";
+        for(ma_uint32 i=0;i<count;++i)std::cout<<"  "<<i<<" : "<<list[i].name<<(list[i].isDefault?" [default]":"")<<"\n";
+        std::cout<<"Selection: "<<std::flush;
+        std::string line;
+        if(!std::getline(std::cin,line))throw std::runtime_error("Guided setup cancelled");
+        if(line.empty()||line=="-1")return -1;
+        try{
+            const int index=readInteger(line);
+            if(index>=0&&index<static_cast<int>(count))return index;
+        }catch(const std::exception&){}
+        std::cout<<"Invalid device choice. Select a listed index.\n";
+    }
+}
+#endif
+
+struct Runtime {
+    Runtime(const Options& o,std::vector<float> song)
+        : mixer(std::move(song),o.wet,o.gain),wet(o.wet),gain(o.gain),
+          echo(o.echo),feedback(o.feedback),echoMs(o.echoMs),musicGain(o.musicGain){}
+    roomtone::KaraokeMix mixer;
+    std::atomic<bool> monitoring{false},musicPlaying{false},rewindRequest{false},repeat{false},interrupted{false};
+    std::atomic<std::uint64_t> seekRequest{std::numeric_limits<std::uint64_t>::max()};
+    std::atomic<float> wet,gain,echo,feedback,musicGain;
+    std::atomic<unsigned> echoMs;
+    std::atomic<std::uint64_t> songPosition{0};
+    roomtone::Handoff session;
+    // A-B markers may change on the GUI thread while the audio callback
+    // is rendering. Publish valid ranges after both frame positions.
+    std::atomic<bool> abLoop{false};
+    std::atomic<std::size_t> abStart{0},abEnd{0};
+    bool practiceStartMarked=false; // only accessed on owner/UI thread
+};
+// On driver stop/reroute, fail closed. Never restart/uninit a device from
+// a driver callback; the user can explicitly request reconnect on CLI thread.
+static void onNotification(const ma_device_notification* event) {
+    if(!event||!event->pDevice)return;
+    auto* rt=static_cast<Runtime*>(event->pDevice->pUserData);
+    if(!rt)return;
+    if(event->type==ma_device_notification_type_stopped||
+       event->type==ma_device_notification_type_rerouted) {
+        rt->monitoring.store(false,std::memory_order_relaxed);
+        rt->musicPlaying.store(false,std::memory_order_relaxed);
+        rt->interrupted.store(true,std::memory_order_relaxed);
+    }
+}
+static void callback(ma_device* device, void* output, const void* input, ma_uint32 frames) {
+    auto* rt=static_cast<Runtime*>(device->pUserData);
+    if(!output||!rt)return;
+    auto* out=static_cast<float*>(output);
+    const auto* in=static_cast<const float*>(input);
+    // A rerouted/stopped driver must emit silence even if it delivers a final
+    // callback before the UI owner drains/uninitializes the old device.
+    if(rt->interrupted.load(std::memory_order_relaxed)){
+        std::fill_n(out,static_cast<std::size_t>(frames)*2,0.0f);
+        return;
+    }
+    if(rt->rewindRequest.exchange(false,std::memory_order_relaxed))rt->mixer.rewind();
+    constexpr auto kNoSeek=std::numeric_limits<std::uint64_t>::max();
+    const auto seek=rt->seekRequest.exchange(kNoSeek,std::memory_order_relaxed);
+    if(seek!=kNoSeek)rt->mixer.seekFrames(static_cast<std::size_t>(seek));
+    rt->mixer.vocal.setParameters(rt->wet.load(std::memory_order_relaxed),
+        rt->gain.load(std::memory_order_relaxed),rt->echo.load(std::memory_order_relaxed),
+        rt->feedback.load(std::memory_order_relaxed),rt->echoMs.load(std::memory_order_relaxed));
+    const bool monitor=in&&rt->monitoring.load(std::memory_order_relaxed);
+    const bool play=rt->musicPlaying.load(std::memory_order_relaxed);
+    const float level=rt->musicGain.load(std::memory_order_relaxed);
+    for(ma_uint32 i=0;i<frames;++i) {
+        if(play&&rt->repeat.load(std::memory_order_relaxed)){
+            if(rt->abLoop.load(std::memory_order_relaxed)&&
+               rt->mixer.position()>=rt->abEnd.load(std::memory_order_relaxed))
+                 rt->mixer.seekFrames(rt->abStart.load(std::memory_order_relaxed));
+            else if(rt->mixer.songEnded())rt->mixer.rewind();
+        }
+        const auto result=rt->mixer.render(in?in[i]:0.0f,monitor,play,level);
+        out[i*2]=result.left;out[i*2+1]=result.right;
+    }
+    rt->songPosition.store(rt->mixer.position(),std::memory_order_relaxed);
+    if(rt->mixer.songEnded()&&!rt->repeat.load(std::memory_order_relaxed)&&!rt->rewindRequest.load(std::memory_order_relaxed))
+        rt->musicPlaying.store(false,std::memory_order_relaxed);
+}
+static bool changeLevel(Runtime& rt,const std::string& key,const std::string& value) {
+    if(key=="echo-ms"){
+        const int ms=readInteger(value);
+        if(ms<80||ms>550)throw std::invalid_argument("echo-ms requires 80..550");
+        rt.echoMs.store(static_cast<unsigned>(ms));return true;
+    }
+    const float v=readFloat(value);
+    std::atomic<float>* target=nullptr;float maximum=0;
+    if(key=="wet"){target=&rt.wet;maximum=0.25f;}
+    else if(key=="gain"){target=&rt.gain;maximum=0.35f;}
+    else if(key=="echo"){target=&rt.echo;maximum=0.35f;}
+    else if(key=="feedback"){target=&rt.feedback;maximum=0.35f;}
+    else if(key=="music"){target=&rt.musicGain;maximum=0.50f;}
+    if(!target)return false;
+    if(v<0||v>maximum)throw std::invalid_argument("level outside permitted range");
+    target->store(v);return true;
+}
+
+int main(int argc,char** argv) {
+#ifdef _WIN32
+    try {
+        Options opt=parse(argc,argv);
+        if(argc==1){opt.guided=true;opt.gui=true;} // Double-click uses Win32 UI.
+        if(opt.probeLrc){
+            const auto lyrics=roomtone::loadLrc(std::filesystem::u8path(opt.lrcFile),
+                                                 "offline-probe.wav","Offline lyrics");
+            std::cout<<"OFFLINE_LRC_OK lyrics="<<lyrics.lines.size()
+                     <<"; NO audio devices opened.\n";
+            return 0;
+        }
+        if(opt.probeHandoff){
+            const auto session=roomtone::loadHandoff(opt.handoffFile);
+            std::cout<<"OFFLINE_SESSION_OK audio="<<session.audioName<<" lyrics="<<session.lines.size()
+                     <<" start-ms="<<session.startMs<<"; NO audio devices opened.\n";
+            return 0;
+        }
+        std::wstring chosenSong;
+        if(!opt.list&&!opt.probeSong&&(opt.pickSong||(opt.guided&&opt.song.empty()))) {
+            chosenSong=chooseSongFile();
+            if(chosenSong.empty()){
+                std::cout<<"Song picker cancelled. No hardware was activated.\n";
+                return 0;
+            }
+        }
+        roomtone::Handoff imported;
+        bool hasHandoff=false;
+        const auto originalFileName=[&]()->std::string{
+            return chosenSong.empty()
+                ?std::filesystem::u8path(opt.song).filename().u8string()
+                :std::filesystem::path(chosenSong).filename().u8string();
+        };
+        const auto localLyrics=[&](const std::filesystem::path& file,
+                                   const std::string& currentAudioName)->roomtone::Handoff{
+            std::string extension=file.extension().u8string();
+            std::transform(extension.begin(),extension.end(),extension.begin(),
+                           [](unsigned char c){return static_cast<char>(std::tolower(c));});
+            if(extension==".lrc"){
+                if(currentAudioName.empty())throw std::invalid_argument("Choose original local song before importing LRC");
+                return roomtone::loadLrc(file,currentAudioName,currentAudioName);
+            }
+            if(extension==".rtk")return roomtone::loadHandoff(file);
+            throw std::invalid_argument("Native lyrics must be .rtk or .lrc");
+        };
+        if(!opt.handoffFile.empty()&&!opt.list&&!opt.probeSong){
+            imported=roomtone::loadHandoff(opt.handoffFile);hasHandoff=true;
+        }
+        if(!opt.lrcFile.empty()&&!opt.list&&!opt.probeSong){
+            imported=localLyrics(std::filesystem::u8path(opt.lrcFile),originalFileName());hasHandoff=true;
+        }
+        if(!opt.list&&!opt.probeSong&&(opt.pickHandoff||(opt.guided&&!hasHandoff))){
+            bool choose=opt.pickHandoff;
+            if(!choose&&opt.guided){
+                if(opt.gui){
+                    choose=MessageBoxW(nullptr,
+                         L"Import a local .rtk session or standard .lrc timed lyrics file?",
+                         L"ROOMTONE local handoff",MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2)==IDYES;
+                }else{
+                    std::cout<<"Import local .rtk session or .lrc lyrics? y/N: "<<std::flush;
+                    std::string answer;
+                    if(!std::getline(std::cin,answer))return 0;
+                    choose=answer=="y"||answer=="Y";
+                }
+            }
+            if(choose){
+                const auto selected=chooseHandoffFile();
+                if(!selected.empty()){
+                    imported=localLyrics(std::filesystem::path(selected),originalFileName());
+                    hasHandoff=true;
+                }
+            }
+        }
+        if(hasHandoff){
+            if(opt.song.empty()&&chosenSong.empty())
+                throw std::invalid_argument("ROOMTONE session requires original local audio file");
+            const std::string filename=originalFileName();
+            if(filename!=imported.audioName)
+                throw std::invalid_argument("Selected local instrumental filename does not match original ROOMTONE session");
+        }
+        // Decode before WASAPI; .rtk never contains audio bytes or disk path.
+        auto song=opt.list?std::vector<float>{}:loadSong(opt.song,chosenSong);
+        if(opt.probeSong){
+            std::cout<<"DECODED_LOCAL_FRAMES "<<song.size()/2<<" AT_48000_STEREO; no audio device opened.\n";
+            return 0;
+        }
+        const ma_backend backend[]={ma_backend_wasapi};
+        ma_context context{};
+        if(ma_context_init(backend,1,nullptr,&context)!=MA_SUCCESS) {
+            std::cerr<<"Could not initialize Windows WASAPI backend.\n";return 2;
+        }
+        ma_device_info* outputs=nullptr;
+        ma_device_info* inputs=nullptr;
+        ma_uint32 outCount=0,inCount=0;
+        if(ma_context_get_devices(&context,&outputs,&outCount,&inputs,&inCount)!=MA_SUCCESS){
+            std::cerr<<"Audio device enumeration failed.\n";
+            ma_context_uninit(&context);return 3;
+        }
+        auto printDevices=[](const char* kind,ma_device_info* infos,ma_uint32 count) {
+            std::cout<<kind<<" devices (0-based; default is the Windows-selected device):\n";
+            for(ma_uint32 i=0;i<count;++i)std::cout<<"  "<<i<<"  "<<infos[i].name<<(infos[i].isDefault?" [default]":"")<<"\n";
+        };
+        if(opt.list) {
+            printDevices("Capture",inputs,inCount);
+            printDevices("Playback",outputs,outCount);
+            ma_context_uninit(&context);return 0;
+        }
+        // Snapshot the chooser labels before any modal user interaction.
+        // Enumerated miniaudio device pointers may become stale after USB changes.
+        std::vector<std::string> initialInputs,initialOutputs;
+        for(ma_uint32 i=0;i<inCount;++i)initialInputs.emplace_back(inputs[i].name);
+        for(ma_uint32 i=0;i<outCount;++i)initialOutputs.emplace_back(outputs[i].name);
+        if(opt.guided){
+            try{
+                if(opt.gui){
+                    std::vector<std::wstring> microphones,speakers;
+                    for(const auto& name:initialInputs)microphones.push_back(roomtone::desktop::wide(name));
+                    for(const auto& name:initialOutputs)speakers.push_back(roomtone::desktop::wide(name));
+                    const auto choice=roomtone::desktop::selectDevices(microphones,speakers);
+                    if(!choice){ma_context_uninit(&context);return 0;}
+                    opt.input=choice->first;opt.output=choice->second;
+                }else{
+                    opt.input=chooseDeviceIndex("Microphone",inputs,inCount);
+                    opt.output=chooseDeviceIndex("Speaker",outputs,outCount);
+                }
+            }catch(...){ma_context_uninit(&context);throw;}
+        }
+        std::string inputName,outputName;
+        // This WASAPI endpoint token is private, in-memory and never serialized.
+        // It identifies the selected OS endpoint, not the physical USB unit.
+        std::string pinnedInputId,pinnedOutputId;
+        const auto endpointId=[](const ma_device_info& info)->std::string{
+            const auto& bytes=info.id.wasapi;
+            std::size_t length=0;
+            while(length<sizeof(bytes)/sizeof(bytes[0])&&bytes[length]!=0)++length;
+            return std::string(reinterpret_cast<const char*>(bytes),length*sizeof(bytes[0]));
+        };
+        if(!roomtone::device_policy::selectedName(opt.input,initialInputs,inputName)||
+           !roomtone::device_policy::selectedName(opt.output,initialOutputs,outputName)){
+            std::cerr<<"Device selection is missing, stale or ambiguous. Select a unique named device or Windows default.\n";
+            ma_context_uninit(&context);return 4;
+        }
+        if(!inputName.empty())std::cout<<"Input: "<<inputName<<"\n";
+        if(!outputName.empty())std::cout<<"Output: "<<outputName<<"\n";
+        // A unique name selects the first OS endpoint. Once successfully started, its
+        // WASAPI endpoint ID is pinned until the owner deliberately re-selects devices.
+        // System defaults remain explicitly OS-owned. Same-name new endpoints fail closed.
+        std::string selectedSongFile=chosenSong.empty()
+             ?std::filesystem::u8path(opt.song).filename().u8string()
+             :std::filesystem::path(chosenSong).filename().u8string();
+        roomtone::song_queue::Queue songQueue;
+        if(!selectedSongFile.empty())
+            songQueue.reset(chosenSong.empty()
+                ?std::filesystem::u8path(opt.song)
+                :std::filesystem::path(chosenSong));
+        std::wstring displayTitle=hasHandoff?roomtone::desktop::wide(imported.title)
+             :roomtone::desktop::wide(selectedSongFile);
+        Runtime rt(opt,std::move(song));
+        int importedLyricOffset=0;
+        if(hasHandoff){
+            rt.session=std::move(imported);
+            importedLyricOffset=rt.session.offsetMs;
+            rt.seekRequest.store(std::min<std::uint64_t>(rt.session.startMs*48ULL,rt.mixer.songFrames()));
+            rt.repeat.store(rt.session.loop);
+            if(rt.session.loop){
+                const auto begin=std::min<std::size_t>(rt.session.loopStartMs*48ULL,rt.mixer.songFrames());
+                const auto finish=std::min<std::size_t>(rt.session.loopEndMs*48ULL,rt.mixer.songFrames());
+                rt.abStart.store(begin);rt.abEnd.store(finish);
+                rt.abLoop.store(roomtone::practice::validAB(begin,finish,rt.mixer.songFrames()));
+                rt.practiceStartMarked=rt.abLoop.load();
+            }
+        }
+        ma_device device{};
+        bool deviceActive=false;
+        bool ownerSuspended=false; // explicit local hold, never auto-reconnect on hotplug
+        bool deviceTopologyDirty=false;
+        std::wstring lastDeviceIssue;
+        const auto startDevice=[&]()->bool{
+            lastDeviceIssue.clear();
+            // Device output always starts in an explicitly muted state.
+            rt.monitoring.store(false);rt.musicPlaying.store(false);
+            ma_device_info *newOutputs=nullptr,*newInputs=nullptr;
+            ma_uint32 newOutCount=0,newInCount=0;
+            if(ma_context_get_devices(&context,&newOutputs,&newOutCount,&newInputs,&newInCount)!=MA_SUCCESS){
+                lastDeviceIssue=L"Windows WASAPI enumeration failed. Reconnect USB device or reopen this app.";
+                std::cout<<"Cannot enumerate WASAPI devices; reconnect again later.\n";return false;
+            }
+            std::vector<std::string> captures,playbacks;
+            for(ma_uint32 i=0;i<newInCount;++i)captures.emplace_back(newInputs[i].name);
+            for(ma_uint32 i=0;i<newOutCount;++i)playbacks.emplace_back(newOutputs[i].name);
+            const auto captured=roomtone::device_policy::resolve(inputName,captures);
+            const auto rendered=roomtone::device_policy::resolve(outputName,playbacks);
+            if((!inputName.empty()&&captured.state!=roomtone::device_policy::State::Unique)||
+               (!outputName.empty()&&rendered.state!=roomtone::device_policy::State::Unique)){
+                const auto failure=[](roomtone::device_policy::State state,const wchar_t* role)->std::wstring{
+                    if(state==roomtone::device_policy::State::Missing)
+                        return std::wstring(role)+L" was disconnected or renamed.";
+                    if(state==roomtone::device_policy::State::Ambiguous)
+                        return std::wstring(role)+L" name is duplicated; choose a unique device.";
+                    return {};
+                };
+                lastDeviceIssue=failure(captured.state,L"Microphone ")+L" "+failure(rendered.state,L"Speaker ");
+                if(lastDeviceIssue.empty())lastDeviceIssue=L"Selected device missing or ambiguous.";
+                std::cout<<"Selected device is missing or ambiguous. Audio remains muted. Reconnect it or select devices again.\n";
+                return false;
+            }
+            const int capture=captured.index,playback=rendered.index;
+            const auto currentInput=capture>=0?endpointId(newInputs[capture]):std::string{};
+            const auto currentOutput=playback>=0?endpointId(newOutputs[playback]):std::string{};
+            if((capture>=0&&!roomtone::device_policy::acceptsEndpointId(pinnedInputId,currentInput))||
+               (playback>=0&&!roomtone::device_policy::acceptsEndpointId(pinnedOutputId,currentOutput))){
+                lastDeviceIssue=L"WASAPI endpoint identity changed or unavailable. Select devices again to authorize this endpoint.";
+                std::cout<<"Endpoint identity mismatch; cannot silently use a same-name replacement.\n";
+                return false;
+            }
+            ma_device_config config=ma_device_config_init(ma_device_type_duplex);
+            config.capture.format=ma_format_f32;config.capture.channels=1;
+            config.playback.format=ma_format_f32;config.playback.channels=2;
+            config.sampleRate=roomtone::VocalDsp::kSampleRate;
+            config.periodSizeInFrames=opt.period;
+            config.performanceProfile=ma_performance_profile_low_latency;
+            if(capture>=0)config.capture.pDeviceID=&newInputs[capture].id;
+            if(playback>=0)config.playback.pDeviceID=&newOutputs[playback].id;
+            config.pUserData=&rt;
+            config.dataCallback=callback;
+            config.notificationCallback=onNotification;
+            if(ma_device_init(&context,&config,&device)!=MA_SUCCESS){
+                lastDeviceIssue=L"WASAPI could not initialize capture/playback. Check USB and 48 kHz device setup.";
+                std::cout<<"WASAPI init failed; try reconnect or a larger --period value.\n";
+                return false;
+            }
+            // Clear an OLD interruption before starting, not afterward.
+            // Otherwise a fresh stopped/rerouted notification during startup
+            // could be accidentally masked and re-enable unsafe monitoring.
+            rt.interrupted.store(false);
+            if(ma_device_start(&device)!=MA_SUCCESS){
+                rt.interrupted.store(true);
+                ma_device_uninit(&device);
+                lastDeviceIssue=L"WASAPI failed to start. Device may be busy or unavailable.";
+                std::cout<<"WASAPI start failed; driver may be unavailable.\n";return false;
+            }
+            deviceActive=true;
+            if(rt.interrupted.load()){
+                rt.monitoring.store(false);rt.musicPlaying.store(false);
+                ma_device_uninit(&device);deviceActive=false;
+                lastDeviceIssue=L"Audio was interrupted during device startup. Reconnect only after checking Windows sound.";
+                return false;
+            }
+            // The successful user-selected WASAPI endpoint is now pinned.
+            // A later hotplug cannot reuse its display name with a new ID.
+            if(capture>=0&&pinnedInputId.empty())pinnedInputId=currentInput;
+            if(playback>=0&&pinnedOutputId.empty())pinnedOutputId=currentOutput;
+            return true;
+        };
+        if(!startDevice()&&!opt.gui){
+            ma_context_uninit(&context);return 5;
+        }
+        if(opt.gui){
+            using roomtone::desktop::Action;
+            using roomtone::desktop::Snapshot;
+            std::wstring notice=lastDeviceIssue.empty()
+                ?L"Start with wired headphones at low volume. F9 (focused window) toggles mic."
+                :lastDeviceIssue+L" Voice and music muted.";
+            auto safeStop=[&](){
+                rt.monitoring.store(false);rt.musicPlaying.store(false);
+                if(deviceActive){ma_device_uninit(&device);deviceActive=false;}
+                // Callback has stopped. Freeze the latest owner-requested transport
+                // (including an unconsumed seek/restart), not stale UI position.
+                roomtone::recovery::freeze(
+                    rt.seekRequest,rt.rewindRequest,rt.songPosition,rt.mixer.songFrames());
+            };
+            auto safeRestart=[&](){
+                rt.mixer.vocal.reset();
+                if(startDevice())notice=L"Audio ready. Voice MUTED, music PAUSED. Press Play when ready.";
+                else notice=lastDeviceIssue.empty()
+                    ?L"Audio unavailable. Voice and music remain muted."
+                    :lastDeviceIssue+L" Voice and music remain muted.";
+            };
+            const auto capturePractice=[&]()->roomtone::song_queue::Practice{
+                // Owner thread ONLY, after safeStop() has joined the original
+                // callback and resolved any pending seek/rewind.
+                roomtone::song_queue::Practice state;
+                state.session=hasHandoff?rt.session:roomtone::Handoff{};
+                state.displayTitle=hasHandoff?rt.session.title:selectedSongFile;
+                state.hasSession=hasHandoff;
+                state.importedOffset=importedLyricOffset;
+                state.frames=rt.songPosition.load();
+                state.repeat=rt.repeat.load();
+                state.loopA=rt.abStart.load();state.loopB=rt.abEnd.load();
+                state.loopValid=rt.abLoop.load();
+                state.startMarked=rt.practiceStartMarked;
+                return state;
+            };
+            const auto activateSong=[&](const std::filesystem::path& selected,
+                                        std::vector<float> decoded,
+                                        const std::optional<roomtone::song_queue::Practice>& resume=std::nullopt){
+                if(decoded.empty())throw std::runtime_error("No decoded song frames");
+                // Reject any mismatched cached handoff BEFORE touching PCM,
+                // old queue selection, microphone or source-owned lyrics.
+                if(resume&&resume->hasSession&&
+                   resume->session.audioName!=selected.filename().u8string())
+                    throw std::runtime_error("Queued practice belongs to a different audio filename");
+                const bool previouslyReady=deviceActive&&!rt.interrupted.load();
+                safeStop(); // join the ONE original callback before replacing PCM
+                if(songQueue.size()&&!songQueue.rememberCurrent(capturePractice()))
+                    throw std::runtime_error("Queued source identity changed; previous owner state retained");
+                // Every successful transition resets source-specific state before
+                // optionally restoring ONLY the target path's own volatile copy.
+                rt.seekRequest.store(roomtone::recovery::NoSeek);
+                rt.rewindRequest.store(false);
+                rt.mixer.replaceSong(std::move(decoded));
+                rt.songPosition.store(0);
+                rt.session=roomtone::Handoff{};hasHandoff=false;
+                rt.abLoop.store(false);rt.abStart.store(0);rt.abEnd.store(0);
+                rt.practiceStartMarked=false;rt.repeat.store(false);importedLyricOffset=0;
+                selectedSongFile=selected.filename().u8string();
+                displayTitle=roomtone::desktop::wide(selectedSongFile);
+                if(resume){
+                    // A second file with an identical filename never receives
+                    // the other's session: the queue indexes full user-picked
+                    // paths, and each cached entry is bound to its own path.
+                    const auto frames=std::min<std::uint64_t>(resume->frames,rt.mixer.songFrames());
+                    rt.songPosition.store(frames);
+                    rt.seekRequest.store(frames); // consumed on first reopened callback
+                    rt.session=resume->hasSession?resume->session:roomtone::Handoff{};
+                    hasHandoff=resume->hasSession;
+                    importedLyricOffset=resume->importedOffset;
+                    const auto a=std::min<std::uint64_t>(resume->loopA,rt.mixer.songFrames());
+                    const auto b=std::min<std::uint64_t>(resume->loopB,rt.mixer.songFrames());
+                    rt.abStart.store(static_cast<std::size_t>(a));
+                    rt.abEnd.store(static_cast<std::size_t>(b));
+                    rt.abLoop.store(resume->loopValid&&roomtone::practice::validAB(
+                        a,b,rt.mixer.songFrames()));
+                    rt.practiceStartMarked=resume->startMarked;
+                    rt.repeat.store(resume->repeat);
+                    if(hasHandoff)
+                        displayTitle=roomtone::desktop::wide(
+                            resume->displayTitle.empty()?rt.session.title:resume->displayTitle);
+                }
+                rt.monitoring.store(false);rt.musicPlaying.store(false);
+                if(previouslyReady){
+                    safeRestart();
+                    if(!deviceActive)return; // keep actionable WASAPI issue
+                    notice=resume
+                       ?L"Queued song and its OWN practice restored. Voice MUTED, music PAUSED."
+                       :L"New song loaded. Previous source lyrics cleared; voice MUTED, music PAUSED.";
+                }else{
+                    notice=L"Song selected offline. Reconnect explicitly; voice/music remain muted.";
+                }
+            };
+            const auto activateQueueIndex=[&](std::size_t index){
+                if(!songQueue.canSelect(index))throw std::invalid_argument("Queued song outside owner list");
+                if(index==songQueue.currentIndex()){
+                    notice=L"Already selected; no playback, lyric or queue changes.";return;
+                }
+                // Mute BEFORE disk IO. A decode failure preserves both current
+                // original PCM and all previous path-owned practice state.
+                rt.monitoring.store(false);rt.musicPlaying.store(false);
+                const auto target=songQueue.at(index);
+                const auto before=roomtone::song_queue::observe(target);
+                if(!before)throw std::runtime_error("Queued audio path unavailable. Original song retained");
+                const auto saved=songQueue.verifiedPractice(index,*before);
+                auto next=loadSong("",target.wstring());
+                if(next.empty())throw std::runtime_error("Queued original song could not decode");
+                const auto after=roomtone::song_queue::observe(target);
+                if(!after||!before->same(*after))
+                    throw std::runtime_error("Queued song changed during decode. Original song retained; voice muted");
+                activateSong(target,std::move(next),saved);
+                if(!songQueue.commitVerified(index,*after))
+                    throw std::runtime_error("Queue changed during owner-selected transition");
+            };
+            const roomtone::effects::Settings startupEffects=roomtone::effects::clamp(
+                {opt.wet,opt.gain,opt.echo,opt.feedback,opt.musicGain,opt.echoMs});
+            const auto currentEffects=[&]()->roomtone::effects::Settings{
+                return {rt.wet.load(),rt.gain.load(),rt.echo.load(),
+                        rt.feedback.load(),rt.musicGain.load(),rt.echoMs.load()};
+            };
+            const auto applyEffects=[&](roomtone::effects::Settings value){
+                value=roomtone::effects::clamp(value);
+                // The original callback continues to read the SAME atomic
+                // parameters and existing VocalDsp; no second DSP/state engine.
+                rt.wet.store(value.wet);rt.echo.store(value.echo);
+                rt.feedback.store(value.feedback);rt.echoMs.store(value.delayMs);
+                rt.gain.store(value.gain);rt.musicGain.store(value.music);
+            };
+            roomtone::desktop::Window window;
+            const auto chooseQueueEntry=[&](const wchar_t* operation)->std::optional<std::size_t>{
+                if(songQueue.size()==0)return std::nullopt;
+                rt.monitoring.store(false);rt.musicPlaying.store(false);
+                std::vector<std::wstring> labels;labels.reserve(songQueue.size());
+                for(std::size_t i=0;i<songQueue.size();++i){
+                    std::wstring row=std::to_wstring(i+1)+L".  "+
+                        roomtone::desktop::wide(songQueue.at(i).filename().u8string());
+                    if(i==songQueue.currentIndex())row+=L"  [CURRENT]";
+                    else if(const auto version=roomtone::song_queue::observe(songQueue.at(i));
+                            version&&songQueue.verifiedPractice(i,*version))
+                        row+=L"  [SAVED PRACTICE]";
+                    else if(songQueue.practice(i))row+=L"  [SOURCE CHANGED - PRACTICE NOT RESTORED]";
+                    labels.push_back(std::move(row));
+                }
+                auto selected=roomtone::desktop::selectQueuedSong(
+                    labels,songQueue.currentIndex(),window.hwnd,
+                    [&]{rt.monitoring.store(false);notice=L"VOICE MUTED (F8) in song queue.";},
+                    std::wstring(L"ROOMTONE | ")+operation,
+                    std::wstring(L"Choose a queued entry for ")+operation+
+                       L". Enter selects; Escape cancels; F8 mutes.",
+                    L"Confirm entry");
+                if(!selected)notice=std::wstring(operation)+L" canceled; previous queue retained; audio muted.";
+                return selected;
+            };
+            window.controller.deviceChanged=[&]{deviceTopologyDirty=true;};
+            window.controller.maintenance=[&]{
+                // WASAPI notifications and WM_DEVICECHANGE only signal.
+                // Joining/uninitializing stays on this owner/control thread.
+                if(deviceActive&&rt.interrupted.load()){
+                    safeStop();rt.mixer.vocal.reset();
+                    notice=L"WASAPI interrupted. Position saved; reconnect explicitly (both channels muted).";
+                }
+                if(!deviceTopologyDirty)return;
+                deviceTopologyDirty=false;
+                ma_device_info *outs=nullptr,*ins=nullptr;
+                ma_uint32 no=0,ni=0;
+                if(ma_context_get_devices(&context,&outs,&no,&ins,&ni)!=MA_SUCCESS){
+                    rt.monitoring.store(false);rt.musicPlaying.store(false);
+                    if(deviceActive){rt.interrupted.store(true);safeStop();}
+                    notice=L"Windows device list unavailable. Reconnect explicitly; both channels muted.";
+                    return;
+                }
+                std::vector<std::string> captureNames,playbackNames;
+                for(ma_uint32 i=0;i<ni;++i)captureNames.emplace_back(ins[i].name);
+                for(ma_uint32 i=0;i<no;++i)playbackNames.emplace_back(outs[i].name);
+                const auto capture=roomtone::device_policy::resolve(inputName,captureNames);
+                const auto playback=roomtone::device_policy::resolve(outputName,playbackNames);
+                const bool missing=(capture.state==roomtone::device_policy::State::Missing||
+                    capture.state==roomtone::device_policy::State::Ambiguous||
+                    playback.state==roomtone::device_policy::State::Missing||
+                    playback.state==roomtone::device_policy::State::Ambiguous||
+                    (capture.index>=0&&!pinnedInputId.empty()&&
+                     !roomtone::device_policy::acceptsEndpointId(pinnedInputId,endpointId(ins[capture.index])))||
+                    (playback.index>=0&&!pinnedOutputId.empty()&&
+                     !roomtone::device_policy::acceptsEndpointId(pinnedOutputId,endpointId(outs[playback.index]))));
+                if(missing){
+                    rt.monitoring.store(false);rt.musicPlaying.store(false);
+                    if(deviceActive){rt.interrupted.store(true);safeStop();}
+                    notice=L"Named microphone/speaker missing or ambiguous after device change. No silent fallback. Select devices or reconnect.";
+                }else if(!deviceActive){
+                    notice=ownerSuspended
+                        ?L"Owner suspended the duplex driver. Devices may be visible but remain OFFLINE until explicit recovery."
+                        :L"Devices visible again. Press Reconnect to reopen voice-MUTED and song-PAUSED.";
+                }
+            };
+            window.controller.snapshot=[&]()->Snapshot{
+                Snapshot view;
+                view.title=displayTitle.empty()?L"ROOMTONE / NATIVE KARAOKE":displayTitle;
+                view.positionSeconds=static_cast<unsigned>(rt.songPosition.load()/48000);
+                view.durationSeconds=static_cast<unsigned>(rt.mixer.songFrames()/48000);
+                view.playing=rt.musicPlaying.load();view.microphone=rt.monitoring.load();
+                view.repeat=rt.repeat.load();view.interrupted=rt.interrupted.load();
+                view.ownerSuspended=ownerSuspended;
+                view.loopMarked=rt.abLoop.load();
+                view.loopEnabled=view.loopMarked&&view.repeat;
+                view.loopA=rt.abStart.load();view.loopB=rt.abEnd.load();
+                view.lyricOffsetMs=rt.session.offsetMs;
+                view.queueIndex=songQueue.currentIndex();view.queueTotal=songQueue.size();
+                view.deviceActive=deviceActive;view.hasSong=rt.mixer.hasSong();
+                view.hasLyrics=hasHandoff&&!rt.session.lines.empty();
+                view.reverb=rt.wet.load();view.echo=rt.echo.load();view.music=rt.musicGain.load();view.gain=rt.gain.load();
+                view.feedback=rt.feedback.load();view.delayMs=rt.echoMs.load();
+                view.input=inputName.empty()?L"Windows default":roomtone::desktop::wide(inputName);
+                view.output=outputName.empty()?L"Windows default":roomtone::desktop::wide(outputName);
+                view.notice=rt.interrupted.load()&&deviceActive
+                    ?L"Audio interrupted. Reconnect manually (voice and song stay muted)."
+                    :notice;
+                if(hasHandoff&&!rt.session.lines.empty()){
+                    const auto ms=static_cast<std::uint32_t>(
+                        std::min<std::uint64_t>(rt.songPosition.load()/48,720000));
+                    const auto at=roomtone::lyricIndexAt(rt.session,ms);
+                    if(at==rt.session.lines.size()){
+                        view.current=L"Get ready...";
+                        view.next=roomtone::desktop::wide(rt.session.lines.front().text);
+                    }else{
+                        view.current=roomtone::desktop::wide(rt.session.lines[at].text);
+                        if(at>0)view.previous=roomtone::desktop::wide(rt.session.lines[at-1].text);
+                        if(at+1<rt.session.lines.size())
+                            view.next=roomtone::desktop::wide(rt.session.lines[at+1].text);
+                    }
+                }else view.current=L"Import a matching .rtk for synchronized lyrics";
+                return view;
+            };
+            window.controller.seekSeconds=[&](unsigned seconds){
+                if(!rt.mixer.hasSong()){
+                    notice=L"Cannot seek without a loaded local song.";return;
+                }
+                const auto at=std::min<std::uint64_t>(
+                    static_cast<std::uint64_t>(seconds)*48000ULL,rt.mixer.songFrames());
+                rt.rewindRequest.store(false);
+                rt.seekRequest.store(at);
+                if(!deviceActive||rt.interrupted.load())rt.songPosition.store(at);
+                notice=(!deviceActive||rt.interrupted.load())
+                    ?L"Offline seek saved; reconnect stays voice-MUTED and music-PAUSED."
+                    :L"Song seek queued in the original WASAPI engine.";
+            };
+            window.controller.action=[&](Action action){
+                try{
+                    const bool ready=deviceActive&&!rt.interrupted.load();
+                    const auto level=[&](std::atomic<float>& target,float change,float maximum){
+                        const float current=target.load();
+                        target.store(std::clamp(std::round((current+change)*100.0f)/100.0f,0.0f,maximum));
+                    };
+                    switch(action){
+                    case Action::SuspendAudio:{
+                        // A real owner-facing safe hold: stop AND JOIN the one
+                        // WASAPI callback, preserve latest pending seek and local
+                        // song/practice/queue, and release duplex endpoints.
+                        safeStop();rt.mixer.vocal.reset();
+                        ownerSuspended=true;
+                        notice=L"Owner suspended both audio paths and released the duplex device. "
+                               L"Playhead saved; reconnect requires separate approval.";
+                        break;
+                    }
+                    case Action::EmergencyMute:
+                        rt.monitoring.store(false);
+                        notice=L"VOICE MUTED immediately. Use physical mute/power for acoustic feedback.";
+                        break;
+                    case Action::Mic:
+                        if(!ready){notice=L"Reconnect audio before enabling the microphone.";break;}
+                        if(!rt.monitoring.load()){
+                            if(MessageBoxW(window.hwnd,
+                               L"Enable microphone monitoring?\nBegin with wired headphones and very low volume.\n"
+                               L"Speakers can cause dangerous feedback. Use the physical QuadCast mute immediately.",
+                               L"ROOMTONE - microphone safety",MB_YESNO|MB_ICONWARNING|MB_DEFBUTTON2)!=IDYES)
+                               break;
+                            rt.monitoring.store(true);
+                            notice=L"MIC ON. Physically mute the QuadCast if feedback begins.";
+                        }else{rt.monitoring.store(false);notice=L"Microphone muted.";}
+                        break;
+                    case Action::Play:
+                        if(!ready||!rt.mixer.hasSong()){notice=L"Reconnect audio / load instrumental.";break;}
+                        if(rt.songPosition.load()>=rt.mixer.songFrames())rt.rewindRequest.store(true);
+                        rt.musicPlaying.store(!rt.musicPlaying.load());break;
+                    case Action::Restart:
+                        if(rt.mixer.hasSong()){
+                            // While offline, an older frozen seek must not override restart
+                            // on the first callback of the reconnected device.
+                            if(ready){
+                                rt.seekRequest.store(roomtone::recovery::NoSeek);
+                                rt.rewindRequest.store(true);
+                                rt.musicPlaying.store(true);
+                            }else{
+                                rt.rewindRequest.store(false);
+                                rt.seekRequest.store(0);
+                                rt.songPosition.store(0);
+                                notice=L"Restart queued offline; reconnect stays muted and paused.";
+                            }
+                        }break;
+                    case Action::Back:case Action::Forward:
+                        if(rt.mixer.hasSong()){
+                            const auto current=static_cast<std::size_t>(rt.songPosition.load());
+                            const auto destination=roomtone::parseSeekFrames(
+                                action==Action::Back?"-10":"+10",current,rt.mixer.songFrames());
+                            rt.rewindRequest.store(false);rt.seekRequest.store(destination);
+                            if(!ready)rt.songPosition.store(destination);
+                        }break;
+                    case Action::NextLine:case Action::PreviousLine:
+                        if(rt.mixer.hasSong()&&hasHandoff){
+                            const auto ms=static_cast<std::uint32_t>(
+                                std::min<std::uint64_t>(rt.songPosition.load()/48,720000));
+                            const auto limit=static_cast<std::uint32_t>(
+                                std::min<std::uint64_t>(rt.mixer.songFrames()/48,720000));
+                            const auto target=roomtone::lyricJumpMs(
+                                rt.session,ms,action==Action::NextLine,limit);
+                            if(target){
+                                rt.rewindRequest.store(false);
+                                rt.seekRequest.store(static_cast<std::uint64_t>(*target)*48);
+                                if(!ready)rt.songPosition.store(static_cast<std::uint64_t>(*target)*48);
+                            }
+                        }break;
+                    case Action::BrowseLyrics:{
+                        if(!rt.mixer.hasSong()||!hasHandoff||rt.session.lines.empty()){
+                            notice=L"Load matching .rtk lyrics before browsing.";break;
+                        }
+                        // Source-owned timestamps; never access audio callback or browser.
+                        std::vector<std::wstring> rows;
+                        rows.reserve(rt.session.lines.size());
+                        const auto limit=static_cast<std::int64_t>(
+                            std::min<std::uint64_t>(rt.mixer.songFrames()/48,720000));
+                        for(const auto& lyric:rt.session.lines){
+                            const auto at=std::clamp<std::int64_t>(
+                                static_cast<std::int64_t>(lyric.milliseconds)+rt.session.offsetMs,0,limit);
+                            std::wstring line=roomtone::desktop::clock(static_cast<unsigned>(at/1000));
+                            line+=L"  ";
+                            line+=roomtone::desktop::wide(lyric.text);
+                            if(line.size()>300)line.resize(300);
+                            rows.push_back(std::move(line));
+                        }
+                        const auto ms=static_cast<std::uint32_t>(
+                            std::min<std::uint64_t>(rt.songPosition.load()/48,720000));
+                        const auto current=roomtone::lyricIndexAt(rt.session,ms);
+                        const auto chosen=roomtone::desktop::selectLyric(rows,
+                            current==rt.session.lines.size()?0:current,window.hwnd,
+                            [&]{rt.monitoring.store(false);notice=L"VOICE MUTED (F8) while lyric navigator open.";});
+                        if(!chosen){notice=L"Lyric navigation canceled; transport unchanged.";break;}
+                        const auto target=std::clamp<std::int64_t>(
+                            static_cast<std::int64_t>(rt.session.lines[*chosen].milliseconds)
+                                +rt.session.offsetMs,0,limit);
+                        rt.rewindRequest.store(false);
+                        rt.seekRequest.store(static_cast<std::uint64_t>(target)*48);
+                        if(!ready)rt.songPosition.store(static_cast<std::uint64_t>(target)*48);
+                        notice=L"Selected lyric seek queued without changing mic or music state.";
+                        break;
+                    }
+                    case Action::ChooseLyricSection:{
+                        if(!rt.mixer.hasSong()||!hasHandoff||rt.session.lines.empty()){
+                            notice=L"Import matching source-backed .rtk/.lrc lyrics to select a section.";break;
+                        }
+                        // The native modal owns input focus, so mute PAUSE
+                        // BEFORE opening it; F8 is also handled inside it.
+                        // Both dialogs and confirmation are cancellation-safe:
+                        // the prior A/B markers remain unchanged until commit.
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        const auto duration=static_cast<std::uint64_t>(rt.mixer.songFrames());
+                        const auto limit=static_cast<std::int64_t>(duration/48);
+                        const auto lyricFrame=[&](std::size_t index)->std::uint64_t{
+                            const auto at=std::clamp<std::int64_t>(
+                              static_cast<std::int64_t>(rt.session.lines[index].milliseconds)
+                                +rt.session.offsetMs,0,limit);
+                            return static_cast<std::uint64_t>(at)*48;
+                        };
+                        const auto rowFor=[&](std::size_t index){
+                            std::wstring row=L"Lyric "+std::to_wstring(index+1)+L" · "+
+                                roomtone::desktop::clock(static_cast<unsigned>(lyricFrame(index)/48000))+
+                                L" · "+roomtone::desktop::wide(rt.session.lines[index].text);
+                            if(row.size()>260)row.resize(260);
+                            return row;
+                        };
+                        std::vector<std::wstring> beginnings;
+                        beginnings.reserve(rt.session.lines.size());
+                        for(std::size_t i=0;i<rt.session.lines.size();++i)
+                            beginnings.push_back(rowFor(i));
+                        const auto ms=static_cast<std::uint32_t>(
+                            std::min<std::uint64_t>(rt.songPosition.load()/48,720000));
+                        const auto active=roomtone::lyricIndexAt(rt.session,ms);
+                        const auto chosenA=roomtone::desktop::selectQueuedSong(
+                            beginnings,active==rt.session.lines.size()?0:active,window.hwnd,
+                            [&]{rt.monitoring.store(false);},
+                            L"ROOMTONE | A-B section START",
+                            L"Choose the original lyric cue where A starts. Enter selects; Esc cancels; F8 mutes.",
+                            L"Choose A");
+                        if(!chosenA){
+                            notice=L"Lyric section canceled: prior A-B markers retained; playback PAUSED, voice MUTED.";
+                            break;
+                        }
+                        std::vector<std::wstring> endings;
+                        endings.reserve(rt.session.lines.size()-*chosenA);
+                        for(std::size_t i=*chosenA+1;i<rt.session.lines.size();++i)
+                            endings.push_back(rowFor(i));
+                        endings.push_back(L"Song end · "+
+                            roomtone::desktop::clock(static_cast<unsigned>(duration/48000)));
+                        const auto selectedEnd=roomtone::desktop::selectQueuedSong(
+                            endings,0,window.hwnd,[&]{rt.monitoring.store(false);},
+                            L"ROOMTONE | A-B section END",
+                            L"Choose a LATER authored lyric cue or song end. Enter selects; Esc cancels.",
+                            L"Choose B");
+                        if(!selectedEnd){
+                            notice=L"Lyric section canceled: original A-B markers retained; audio MUTED and PAUSED.";
+                            break;
+                        }
+                        const std::size_t endIndex=*chosenA+1+*selectedEnd;
+                        const auto range=roomtone::lyric_sections::choose(
+                            rt.session,*chosenA,endIndex,duration);
+                        if(!range){
+                            notice=L"Lyric cues overlap, collapse after offset or are <=0.25 s apart; old A-B retained.";
+                            break;
+                        }
+                        const auto preview=L"Set the original source's paused A-B section?\n\n"+
+                            std::wstring(L"A: lyric ")+std::to_wstring(*chosenA+1)+L" · "+
+                            roomtone::desktop::clock(static_cast<unsigned>(range->startFrame/48000))+
+                            L"\nB: "+(endIndex==rt.session.lines.size()
+                                ?L"song end":L"lyric "+std::to_wstring(endIndex+1))+
+                            L" · "+roomtone::desktop::clock(static_cast<unsigned>(range->endFrame/48000))+
+                            L"\n\nRepeat will remain OFF until explicitly enabled. "
+                            L"Voice MUTED and music PAUSED; no file changes.";
+                        if(MessageBoxW(window.hwnd,preview.c_str(),
+                            L"ROOMTONE | Confirm authored section",MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2)!=IDYES){
+                            notice=L"Section creation declined; original A-B markers unchanged; audio PAUSED.";
+                            break;
+                        }
+                        rt.abLoop.store(false);
+                        rt.abStart.store(static_cast<std::size_t>(range->startFrame));
+                        rt.abEnd.store(static_cast<std::size_t>(range->endFrame));
+                        rt.practiceStartMarked=true;
+                        rt.repeat.store(false);
+                        rt.abLoop.store(true);
+                        notice=L"Source-backed A-B section ready. Repeat OFF. Ctrl+8 seeks A; Ctrl+9 seeks B.";
+                        break;
+                    }
+                    case Action::SeekLoopA:case Action::SeekLoopB:{
+                        if(!rt.mixer.hasSong()){
+                            notice=L"No original song is loaded. Marker seek refused.";break;
+                        }
+                        const bool toB=action==Action::SeekLoopB;
+                        const auto selected=toB?rt.abEnd.load():rt.abStart.load();
+                        const auto cue=roomtone::lyric_sections::marker(selected,
+                            toB?rt.abLoop.load():rt.practiceStartMarked,
+                            rt.mixer.songFrames());
+                        if(!cue){
+                            notice=toB?L"No valid B marker: mark A and B first."
+                                :L"No A marker: set A or choose authored lyric section.";
+                            break;
+                        }
+                        // A focused owner action, NOT autoplay or a driver
+                        // restart. Preserve the original source and cached
+                        // per-song practice for later queue revisits.
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        rt.rewindRequest.store(false);
+                        rt.seekRequest.store(*cue);
+                        if(!ready)rt.songPosition.store(*cue);
+                        notice=toB?L"Paused at marker B; microphone MUTED."
+                            :L"Paused at marker A; microphone MUTED.";
+                        break;
+                    }
+                    case Action::MarkLoopA:{
+                        if(!rt.mixer.hasSong()){notice=L"Load a song before marking A.";break;}
+                        const auto newA=roomtone::practice::markAt(rt.songPosition.load(),rt.mixer.songFrames());
+                        rt.abLoop.store(false);
+                        rt.abStart.store(static_cast<std::size_t>(newA));
+                        rt.practiceStartMarked=true;
+                        const auto end=rt.abEnd.load();
+                        const bool valid=roomtone::practice::validAB(newA,end,rt.mixer.songFrames());
+                        rt.abLoop.store(valid);
+                        rt.repeat.store(false); // Marking never enables playback/repeat.
+                        notice=valid?L"Loop A updated; use Practice > Toggle A-B to repeat."
+                            :L"Marked loop A. Seek forward at least 0.25 s, then mark B.";
+                        break;
+                    }
+                    case Action::MarkLoopB:{
+                        if(!rt.mixer.hasSong()||!rt.practiceStartMarked){
+                            notice=L"Mark loop A first.";break;
+                        }
+                        const auto newB=roomtone::practice::markAt(rt.songPosition.load(),rt.mixer.songFrames());
+                        if(!roomtone::practice::validAB(rt.abStart.load(),newB,rt.mixer.songFrames())){
+                            notice=L"Loop B must be more than 0.25 s after A and inside song.";break;
+                        }
+                        rt.abLoop.store(false);
+                        rt.abEnd.store(static_cast<std::size_t>(newB));
+                        rt.abLoop.store(true);rt.repeat.store(false);
+                        notice=L"A-B range ready. Use Practice > Toggle A-B to repeat; microphone unchanged.";
+                        break;
+                    }
+                    case Action::ClearAB:
+                        rt.abLoop.store(false);rt.repeat.store(false);
+                        rt.abStart.store(0);rt.abEnd.store(0);rt.practiceStartMarked=false;
+                        notice=L"A-B markers cleared; song repeat OFF. Playback/mic unchanged.";break;
+                    case Action::ToggleAB:
+                        if(!rt.abLoop.load()){
+                            notice=L"Mark A, then B more than 0.25 s later.";break;
+                        }
+                        rt.repeat.store(!rt.repeat.load());
+                        notice=rt.repeat.load()?L"A-B practice repeat ON; mic unchanged."
+                            :L"A-B practice repeat OFF; mic unchanged.";break;
+                    case Action::OffsetEarlier:case Action::OffsetLater:case Action::OffsetReset:{
+                        if(!hasHandoff||rt.session.lines.empty()){
+                            notice=L"Import timed lyrics before adjusting offset.";break;
+                        }
+                        rt.session.offsetMs=action==Action::OffsetReset?importedLyricOffset:
+                            roomtone::practice::adjustOffset(rt.session.offsetMs,
+                                action==Action::OffsetEarlier?-100:100);
+                        notice=L"Lyric offset "+std::to_wstring(rt.session.offsetMs)+
+                            L" ms (local practice only; no files changed).";
+                        break;
+                    }
+                    case Action::Repeat:rt.repeat.store(!rt.repeat.load());break;
+                    case Action::FeedbackDown:case Action::FeedbackUp:{
+                        // Raising echo feedback while microphone monitoring is
+                        // active must not silently increase live acoustic risk.
+                        if(action==Action::FeedbackUp&&rt.monitoring.load()){
+                            rt.monitoring.store(false);
+                            notice=L"Microphone muted before increasing echo feedback. Re-enable explicitly.";
+                        }
+                        auto state=currentEffects();
+                        state.feedback=roomtone::effects::nudge(state.feedback,
+                            action==Action::FeedbackUp?2:-2,0.35f);
+                        applyEffects(state);
+                        if(action==Action::FeedbackDown||!rt.monitoring.load())
+                           notice=L"Echo feedback "+std::to_wstring(static_cast<int>(
+                               std::lround(state.feedback*100.0f)))+
+                               L"%. Native local DSP; microphone monitoring must be explicitly approved.";
+                        break;
+                    }
+                    case Action::DelayShorter:case Action::DelayLonger:{
+                        auto state=currentEffects();
+                        state.delayMs=roomtone::effects::nudgeDelay(state.delayMs,
+                            action==Action::DelayShorter?-20:20);
+                        applyEffects(state);
+                        notice=L"Echo delay "+std::to_wstring(state.delayMs)+L" ms (not measured input-output latency).";
+                        break;
+                    }
+                    case Action::DryVoice:{
+                        applyEffects(roomtone::effects::dryVoice(currentEffects()));
+                        notice=L"Dry voice: reverb, echo and feedback OFF; original music and gain unchanged.";
+                        break;
+                    }
+                    case Action::RestoreEffects:{
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        applyEffects(startupEffects);
+                        notice=L"Original launch effects restored; voice MUTED and song PAUSED before increase.";
+                        break;
+                    }
+                    case Action::ShowEffects:{
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        const auto fx=currentEffects();
+                        const auto percent=[](float v){return std::to_wstring(
+                          static_cast<int>(std::lround(v*100.0f)))+L"%";};
+                        const std::wstring report=
+                            L"Current ORIGINAL VocalDsp (local-only)\n\n"+
+                            std::wstring(L"Reverb: ")+percent(fx.wet)+L" (0-25%)\n"+
+                            L"Echo amount: "+percent(fx.echo)+L" (0-35%)\n"+
+                            L"Echo feedback: "+percent(fx.feedback)+L" (0-35%)\n"+
+                            L"Echo delay: "+std::to_wstring(fx.delayMs)+L" ms (80-550)\n"+
+                            L"Voice gain: "+percent(fx.gain)+L" (0-35%)\n"+
+                            L"Music level: "+percent(fx.music)+L" (0-50%)\n\n"+
+                            L"This is DSP configuration, NOT measured microphone latency.\n"+
+                            L"Monitoring and music were paused before this modal dialog.";
+                        MessageBoxW(window.hwnd,report.c_str(),L"ROOMTONE | Original DSP parameters",MB_OK|MB_ICONINFORMATION);
+                        notice=L"Effects inspected. Voice MUTED, music PAUSED. No settings changed.";
+                        break;
+                    }
+                    case Action::ShowRecovery:{
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        const auto health=roomtone::recovery::state(deviceActive,
+                            rt.interrupted.load(),ownerSuspended);
+                        const std::wstring phase=health==roomtone::recovery::DriverState::OwnerSuspended
+                            ?L"OWNER SUSPENDED (device released)"
+                            :health==roomtone::recovery::DriverState::Interrupted
+                                ?L"INTERRUPTED":health==roomtone::recovery::DriverState::Ready
+                                    ?L"READY (muted)":L"OFFLINE (muted)";
+                        const std::wstring steps=
+                            L"1. Physically mute microphone; use wired headphones at low volume.\n"
+                            L"2. Verify Windows capture/playback device and USB connection.\n"
+                            L"3. If device names or endpoint identity changed, use Audio > Choose devices.\n"
+                            L"4. Use Audio > Owner reconnect (Ctrl+R); it ALWAYS restarts muted/paused.\n"
+                            L"5. Check current playhead before separately enabling music/voice.\n"
+                            L"6. Stop speakers physically if any acoustic feedback occurs.\n\n"
+                            L"Physical QuadCast/Pebble latency, feedback and real USB recovery: NOT TESTED.";
+                        const std::wstring report=L"Audio state: "+phase+
+                            L"\nInput: "+(inputName.empty()?L"Windows default":roomtone::desktop::wide(inputName))+
+                            L"\nOutput: "+(outputName.empty()?L"Windows default":roomtone::desktop::wide(outputName))+
+                            L"\nPosition: "+std::to_wstring(rt.songPosition.load()/48000)+
+                            L" seconds (source callback or owner seek)\n"+
+                            (lastDeviceIssue.empty()?L"":L"\nLatest device diagnostic: "+lastDeviceIssue+L"\n")+
+                            L"\n"+steps;
+                        MessageBoxW(window.hwnd,report.c_str(),L"ROOMTONE | Audio recovery guide",MB_OK|MB_ICONINFORMATION);
+                        notice=L"Audio inspected. Reconnect is owner-initiated; voice MUTED/music PAUSED.";
+                        break;
+                    }
+                    case Action::ReverbDown:level(rt.wet,-0.02f,0.25f);break;
+                    case Action::ReverbUp:level(rt.wet,0.02f,0.25f);break;
+                    case Action::EchoDown:level(rt.echo,-0.02f,0.35f);break;
+                    case Action::EchoUp:level(rt.echo,0.02f,0.35f);break;
+                    case Action::MusicDown:level(rt.musicGain,-0.03f,0.5f);break;
+                    case Action::MusicUp:level(rt.musicGain,0.03f,0.5f);break;
+                    case Action::GainDown:level(rt.gain,-0.02f,0.35f);break;
+                    case Action::GainUp:level(rt.gain,0.02f,0.35f);break;
+                    case Action::SaveSession:{
+                        if(!rt.mixer.hasSong()||selectedSongFile.empty()){
+                            notice=L"Load original local song before saving session.";break;
+                        }
+                        // Export always joins the original callback, ensuring the
+                        // pending seek/restart is frozen consistently. A file picker
+                        // cannot leave voice monitoring enabled.
+                        const bool wasReady=deviceActive&&!rt.interrupted.load();
+                        safeStop();
+                        const auto reopenIfReady=[&]{if(wasReady)safeRestart();};
+                        try{
+                            const auto exportSession=roomtone::session_export::snapshot(
+                                hasHandoff?rt.session:roomtone::Handoff{},
+                                selectedSongFile,selectedSongFile,
+                                rt.songPosition.load(),rt.mixer.songFrames(),
+                                rt.repeat.load(),rt.abStart.load(),rt.abEnd.load(),rt.abLoop.load());
+                            const auto destination=chooseSessionSaveFile();
+                            if(!destination.empty()){
+                                roomtone::local_file::saveNew(std::filesystem::path(destination),exportSession);
+                                reopenIfReady();
+                                notice=L"Practice saved to a NEW local .rtk file. Voice MUTED, music PAUSED.";
+                            }else{
+                                reopenIfReady();
+                                notice=L"Save canceled; no file written. Voice MUTED, music PAUSED.";
+                            }
+                        }catch(...){reopenIfReady();throw;}
+                        break;
+                    }
+                    case Action::Reconnect:{
+                        // Ctrl+R is a REQUEST, not blanket permission to
+                        // reopen capture after an unknown USB/topology change.
+                        // A second explicit local YES is required; default NO.
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        const std::wstring prompt=
+                            L"Manually reopen the selected local WASAPI audio path?\n\n"
+                            L"Microphone: "+(inputName.empty()?L"Windows default":roomtone::desktop::wide(inputName))+
+                            L"\nSpeaker: "+(outputName.empty()?L"Windows default":roomtone::desktop::wide(outputName))+
+                            L"\nCurrent source position: "+std::to_wstring(rt.songPosition.load()/48000)+L" seconds"+
+                            L"\n\nPhysically mute microphone and reduce headphone/speaker volume first. "
+                            L"Device names and pinned endpoint identities will be rechecked; "
+                            L"same-name replacements require Audio > Choose devices. "
+                            L"Reconnected audio starts with VOICE MUTED and MUSIC PAUSED.\n\n"
+                            L"Physical safety has NOT been qualified. Continue?";
+                        const bool approved=MessageBoxW(window.hwnd,prompt.c_str(),
+                            L"ROOMTONE | Owner-approved recovery",
+                            MB_YESNO|MB_ICONWARNING|MB_DEFBUTTON2)==IDYES;
+                        if(!roomtone::recovery::ownerMayReconnect(approved)){
+                            notice=L"Reconnect canceled. No audio device opened; original source/position retained.";
+                            break;
+                        }
+                        safeStop();
+                        ownerSuspended=false;
+                        safeRestart(); // preserves pinned identities; no fallback
+                        break;
+                    }
+                    case Action::ChooseSong:{
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        const auto chosen=chooseSongFile();
+                        if(chosen.empty()){notice=L"Song selection canceled; microphone and music muted.";break;}
+                        const std::filesystem::path path(chosen);
+                        auto next=loadSong("",chosen);
+                        activateSong(path,std::move(next));
+                        songQueue.reset(path); // explicit new listening context
+                        notice+=L" Queue reset to this original song.";
+                        break;
+                    }
+                    case Action::AddQueueSong:{
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        const auto chosen=chooseSongFile();
+                        if(chosen.empty()){notice=L"Queue addition canceled; voice and music muted.";break;}
+                        const std::filesystem::path path(chosen);
+                        if(songQueue.size()==0){
+                            auto next=loadSong("",chosen);
+                            activateSong(path,std::move(next));
+                            songQueue.reset(path);
+                            notice=L"First queued song loaded; voice MUTED and music PAUSED.";
+                        }else if(songQueue.add(path)){
+                            notice=L"Local song added to volatile queue. Select it manually; no automatic playback.";
+                        }else notice=L"Queue entry refused: same local file, missing filename or 24-song limit.";
+                        break;
+                    }
+                    case Action::NextQueueSong:case Action::PreviousQueueSong:{
+                        const auto candidate=action==Action::NextQueueSong
+                          ?songQueue.next():songQueue.previous();
+                        if(!candidate){
+                            notice=L"No next/previous queued song. Add another local file first.";break;
+                        }
+                        activateQueueIndex(*candidate);
+                        break;
+                    }
+                    case Action::ShowQueue:{
+                        if(songQueue.size()==0){notice=L"Queue empty. Add a local song first.";break;}
+                        const auto chosen=chooseQueueEntry(L"Song selection");
+                        if(chosen)activateQueueIndex(*chosen);
+                        break;
+                    }
+                    case Action::MoveQueuedUp:case Action::MoveQueuedDown:{
+                        if(songQueue.size()<2){notice=L"Add two songs before reordering.";break;}
+                        const auto chosen=chooseQueueEntry(L"Reorder");
+                        if(!chosen)break;
+                        const bool moved=songQueue.move(*chosen,
+                            action==Action::MoveQueuedUp?-1:1);
+                        notice=moved?L"Queue order updated in memory; current PCM/lyrics unchanged."
+                           :L"Already at queue boundary; nothing moved.";
+                        break;
+                    }
+                    case Action::RemoveQueuedSong:{
+                        if(songQueue.size()<2){notice=L"Only current song remains; no removal.";break;}
+                        const auto chosen=chooseQueueEntry(L"Removal");
+                        if(!chosen)break;
+                        if(*chosen==songQueue.currentIndex()){
+                            notice=L"Cannot remove current song. Select another original song first.";break;
+                        }
+                        const auto label=roomtone::desktop::wide(songQueue.at(*chosen).filename().u8string());
+                        const auto question=L"Remove this queued entry and its in-memory practice?\n"+label+
+                            L"\n\nNo local music/lyrics files will be deleted.";
+                        if(MessageBoxW(window.hwnd,question.c_str(),L"ROOMTONE | Remove pending song",
+                             MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2)!=IDYES){
+                            notice=L"Removal canceled. Current song and queue unchanged.";break;
+                        }
+                        if(!songQueue.remove(*chosen))throw std::runtime_error("Could not remove inactive queued song");
+                        notice=L"Pending song removed in memory; files on disk untouched.";
+                        break;
+                    }
+                    case Action::ClearPendingQueue:{
+                        if(songQueue.size()<2){notice=L"No pending queued songs to clear.";break;}
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        if(MessageBoxW(window.hwnd,
+                          L"Remove ALL queued songs except the current original track?\n"
+                          L"In-memory snapshots for pending songs will be discarded. No files are deleted.",
+                          L"ROOMTONE | Clear pending queue",
+                          MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2)!=IDYES){
+                           notice=L"Queue clear canceled; current song retained.";break;
+                        }
+                        const auto dropped=songQueue.clearPending();
+                        notice=L"Cleared "+std::to_wstring(dropped)+
+                            L" pending song(s). Current source and practice remain.";
+                        break;
+                    }
+                    case Action::ChooseSession:{
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        const auto path=chooseHandoffFile();
+                        if(path.empty()){notice=L"Session selection canceled; microphone and music muted.";break;}
+                        auto loaded=localLyrics(std::filesystem::path(path),selectedSongFile);
+                        auto extension=std::filesystem::path(path).extension().u8string();
+                        std::transform(extension.begin(),extension.end(),extension.begin(),
+                            [](unsigned char c){return static_cast<char>(std::tolower(c));});
+                        const bool directLrc=extension==".lrc";
+                        if(directLrc){
+                            // Lyrics-only import retains position and A-B loop.
+                            loaded.startMs=static_cast<std::uint32_t>(
+                                std::min<std::uint64_t>(rt.songPosition.load()/48,720000));
+                            loaded.loop=rt.repeat.load();
+                            loaded.loopStartMs=static_cast<std::uint32_t>(
+                                std::min<std::uint64_t>(rt.abStart.load()/48,720000));
+                            loaded.loopEndMs=static_cast<std::uint32_t>(
+                                std::min<std::uint64_t>(rt.abEnd.load()/48,720000));
+                        }
+                        if(loaded.audioName!=selectedSongFile)
+                            throw std::runtime_error("Session filename must match selected original instrumental");
+                        // Deliberate confirmation precedes any replacement of
+                        // source-owned lyrics, saved A-B practice or playhead.
+                        // For .lrc, the filename match was assigned locally
+                        // and is NOT independent evidence of a matching song.
+                        const auto preview=std::wstring(L"Current instrumental: ")+
+                            roomtone::desktop::wide(selectedSongFile)+
+                            L"\nSelected title: "+roomtone::desktop::wide(loaded.title)+
+                            L"\nTimed lines: "+std::to_wstring(loaded.lines.size())+
+                            L"\nLyric offset: "+std::to_wstring(loaded.offsetMs)+L" ms"+
+                            (directLrc
+                              ?L"\n\nLRC lyrics do not prove the song matches; existing position and practice loop will remain."
+                              :L"\n\nSession will restore its saved position and loop.")+
+                            L"\n\nReplace current lyrics? Voice and music remain muted.";
+                        if(MessageBoxW(window.hwnd,preview.c_str(),L"ROOMTONE | Import preview",
+                             MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2)!=IDYES){
+                            notice=L"Import canceled; previous lyrics and song position retained. Voice MUTED.";
+                            break;
+                        }
+                        const bool wasReady=deviceActive&&!rt.interrupted.load();
+                        safeStop();
+                        rt.session=loaded;hasHandoff=true;rt.repeat.store(loaded.loop);
+                        importedLyricOffset=loaded.offsetMs;
+                        const auto begin=std::min<std::size_t>(loaded.loopStartMs*48ULL,rt.mixer.songFrames());
+                        const auto finish=std::min<std::size_t>(loaded.loopEndMs*48ULL,rt.mixer.songFrames());
+                        rt.abLoop.store(false);rt.abStart.store(begin);rt.abEnd.store(finish);
+                        rt.abLoop.store(roomtone::practice::validAB(begin,finish,rt.mixer.songFrames()));
+                        rt.practiceStartMarked=rt.abLoop.load();
+                        rt.seekRequest.store(std::min<std::uint64_t>(loaded.startMs*48ULL,rt.mixer.songFrames()));
+                        displayTitle=roomtone::desktop::wide(loaded.title);
+                        // Lyrics/session import is NOT an explicit request to
+                        // reconnect unavailable hardware. Only reopen a prior
+                        // known-good driver, muted and paused.
+                        if(wasReady)safeRestart();
+                        notice=wasReady
+                            ?L"Local timed lyrics imported. Voice MUTED; music PAUSED. Ctrl+L browses lines."
+                            :L"Local lyrics imported OFFLINE. Reconnect manually; voice/music remain muted.";
+                        break;
+                    }
+                    case Action::ChooseDevices:{
+                        const bool previouslyReady=deviceActive&&!rt.interrupted.load()&&!ownerSuspended;
+                        safeStop();
+                        ma_device_info *outs=nullptr,*ins=nullptr;
+                        ma_uint32 no=0,ni=0;
+                        if(ma_context_get_devices(&context,&outs,&no,&ins,&ni)!=MA_SUCCESS)
+                            throw std::runtime_error("Cannot enumerate devices");
+                        // Copy labels before modal loop, never keep raw enumeration
+                        // pointers across owner interaction or possible hotplug.
+                        std::vector<std::string> candidateInputs,candidateOutputs;
+                        std::vector<std::string> candidateInputIds,candidateOutputIds;
+                        for(ma_uint32 i=0;i<ni;++i){
+                            candidateInputs.emplace_back(ins[i].name);
+                            candidateInputIds.push_back(endpointId(ins[i]));
+                        }
+                        for(ma_uint32 i=0;i<no;++i){
+                            candidateOutputs.emplace_back(outs[i].name);
+                            candidateOutputIds.push_back(endpointId(outs[i]));
+                        }
+                        std::vector<std::wstring> inputLabels,outputLabels;
+                        for(const auto& name:candidateInputs)inputLabels.push_back(roomtone::desktop::wide(name));
+                        for(const auto& name:candidateOutputs)outputLabels.push_back(roomtone::desktop::wide(name));
+                        const auto choice=roomtone::desktop::selectDevices(inputLabels,outputLabels,window.hwnd,
+                            roomtone::device_policy::chooserIndex(inputName,candidateInputs),
+                            roomtone::device_policy::chooserIndex(outputName,candidateOutputs),
+                            [&]{rt.monitoring.store(false);notice=L"VOICE MUTED (F8) while selecting devices.";});
+                        if(choice){
+                            std::string nextInput=inputName,nextOutput=outputName;
+                            if(!roomtone::device_policy::selectedName(choice->first,candidateInputs,nextInput)||
+                               !roomtone::device_policy::selectedName(choice->second,candidateOutputs,nextOutput)){
+                                notice=L"Device candidate rejected; old source/endpoint retained OFFLINE. "
+                                       L"Use explicit owner Reconnect or choose again.";
+                                break;
+                            }
+                            // The chooser can remain open during physical USB changes.
+                            // Verify both snapshot IDs against a NEW enumeration before
+                            // changing the user's device selection or endpoint pins.
+                            ma_device_info *verifiedOuts=nullptr,*verifiedIns=nullptr;
+                            ma_uint32 verifiedNo=0,verifiedNi=0;
+                            if(ma_context_get_devices(&context,&verifiedOuts,&verifiedNo,
+                                                     &verifiedIns,&verifiedNi)!=MA_SUCCESS){
+                                notice=L"Cannot validate devices after chooser. Previous endpoints retained; muted.";
+                                break;
+                            }
+                            std::vector<std::string> afterInputs,afterOutputs,afterInputIds,afterOutputIds;
+                            for(ma_uint32 i=0;i<verifiedNi;++i){
+                                afterInputs.emplace_back(verifiedIns[i].name);
+                                afterInputIds.push_back(endpointId(verifiedIns[i]));
+                            }
+                            for(ma_uint32 i=0;i<verifiedNo;++i){
+                                afterOutputs.emplace_back(verifiedOuts[i].name);
+                                afterOutputIds.push_back(endpointId(verifiedOuts[i]));
+                            }
+                            if(!roomtone::device_policy::retainsCandidate(
+                                  choice->first,candidateInputs,candidateInputIds,afterInputs,afterInputIds)||
+                               !roomtone::device_policy::retainsCandidate(
+                                  choice->second,candidateOutputs,candidateOutputIds,afterOutputs,afterOutputIds)){
+                                notice=L"Device list or endpoint ID changed during selection. Previous endpoint retained; muted. Reopen selector.";
+                                break;
+                            }
+                            inputName=std::move(nextInput);
+                            outputName=std::move(nextOutput);
+                            // Only an explicitly approved and freshly revalidated
+                            // selection may authorize different WASAPI endpoint IDs.
+                            pinnedInputId.clear();pinnedOutputId.clear();
+                            // An explicitly chosen, freshly revalidated pair
+                            // authorizes exactly one muted connection attempt.
+                            ownerSuspended=false;
+                            if(roomtone::recovery::reopenAfterChooser(previouslyReady,
+                                   roomtone::recovery::DeviceChoice::Revalidated))
+                                safeRestart();
+                        }else{
+                            // Cancel is not authorization to resurrect an
+                            // earlier INTERRUPTED/OFFLINE/OWNER SUSPENDED route.
+                            if(roomtone::recovery::reopenAfterChooser(previouslyReady,
+                                   roomtone::recovery::DeviceChoice::Canceled))
+                                safeRestart();
+                            notice=previouslyReady
+                              ?L"Device chooser canceled. Original ready devices restored MUTED/PAUSED."
+                              :L"Device chooser canceled. Offline/held device NOT reopened; audio MUTED/PAUSED.";
+                        }
+                        break;
+                    }
+                    }
+                }catch(const std::exception& e){
+                    rt.monitoring.store(false);rt.musicPlaying.store(false);
+                    notice=L"Operation rejected: "+roomtone::desktop::wide(e.what())+L". Monitoring muted.";
+                }
+            };
+            const int result=window.run();
+            safeStop();ma_context_uninit(&context);
+            return result;
+        }
+        std::cout<<"\nRUNNING MIC MUTED + SONG PAUSED. Requested "<<opt.period<<" frames at 48000 Hz (NOT measured latency).\n"
+                 <<"Predecoded backing frames: "<<rt.mixer.songFrames()<<"\n"
+                 <<"HEADPHONES FIRST; NO acoustic feedback detection. Physical microphone mute is fastest.\n"
+                 <<"Commands m, p, r, open, load PATH, seek SECONDS (+/- relative),\n"
+                 <<"loop on/off, reconnect,\n"
+                 <<"open/load, lyrics, next-line (from handoff), save PATH.rtk, status, effects, q.\n";
+        std::string command;
+        while(std::getline(std::cin,command)){
+            try {
+                std::istringstream in(command);
+                std::string op,value,extra;
+                in>>op;if(op.empty())continue;
+                if(op=="q"||op=="quit")break;
+                if(op=="open"||op=="load"){
+                    rt.monitoring.store(false);rt.musicPlaying.store(false);
+                    std::vector<float> next;
+                    std::string nextFile;
+                    if(op=="open"){
+                        const auto chosen=chooseSongFile();
+                        if(chosen.empty()){std::cout<<"Selection cancelled; previous song retained, mic and music muted.\n";continue;}
+                        next=loadSong("",chosen);
+                        nextFile=std::filesystem::path(chosen).filename().u8string();
+                    }else{
+                        std::string path;std::getline(in,path);
+                        const auto first=path.find_first_not_of(" \t");
+                        if(first==std::string::npos)throw std::invalid_argument("load requires a local path");
+                        path.erase(0,first);
+                        if(path.size()>=2&&path.front()=='"'&&path.back()=='"')path=path.substr(1,path.size()-2);
+                        next=loadSong(path);
+                        nextFile=std::filesystem::u8path(path).filename().u8string();
+                    }
+                    if(next.empty())throw std::runtime_error("Selected file has no audio");
+                    // Stop and join the real-time thread before replacing audio memory.
+                    if(deviceActive){ma_device_uninit(&device);deviceActive=false;}
+                    rt.seekRequest.store(std::numeric_limits<std::uint64_t>::max());
+                    rt.rewindRequest.store(false);
+                    rt.mixer.replaceSong(std::move(next));
+                    rt.session=roomtone::Handoff{};rt.abLoop.store(false);rt.abStart.store(0);rt.abEnd.store(0);
+                    rt.practiceStartMarked=false;rt.repeat.store(false);hasHandoff=false;
+                    selectedSongFile=std::move(nextFile);
+                    importedLyricOffset=0;
+                    rt.mixer.vocal.reset();
+                    rt.songPosition.store(0);
+                    if(startDevice())std::cout<<"New song loaded: MIC MUTED + SONG PAUSED. Press p to play.\n";
+                    else std::cout<<"New song loaded, but device unavailable. Retry reconnect.\n";
+                }else if(op=="save"){
+                    if(!rt.mixer.hasSong()||selectedSongFile.empty()){
+                        std::cout<<"Load an original local song before exporting a session.\n";continue;
+                    }
+                    std::string path;std::getline(in,path);
+                    const auto first=path.find_first_not_of(" \t");
+                    if(first==std::string::npos)throw std::invalid_argument("save requires a new local .rtk path");
+                    path.erase(0,first);
+                    if(path.size()>=2&&path.front()=='"'&&path.back()=='"')
+                        path=path.substr(1,path.size()-2);
+                    const auto destination=std::filesystem::u8path(path);
+                    auto extension=destination.extension().u8string();
+                    std::transform(extension.begin(),extension.end(),extension.begin(),
+                        [](unsigned char c){return static_cast<char>(std::tolower(c));});
+                    if(extension!=".rtk")throw std::invalid_argument("save requires .rtk filename");
+                    rt.monitoring.store(false);rt.musicPlaying.store(false);
+                    const bool wasReady=deviceActive&&!rt.interrupted.load();
+                    if(deviceActive){ma_device_uninit(&device);deviceActive=false;}
+                    roomtone::recovery::freeze(rt.seekRequest,rt.rewindRequest,
+                                               rt.songPosition,rt.mixer.songFrames());
+                    try{
+                        const auto session=roomtone::session_export::snapshot(
+                            hasHandoff?rt.session:roomtone::Handoff{},
+                            selectedSongFile,selectedSongFile,
+                            rt.songPosition.load(),rt.mixer.songFrames(),
+                            rt.repeat.load(),rt.abStart.load(),rt.abEnd.load(),rt.abLoop.load());
+                        roomtone::local_file::saveNew(destination,session);
+                    }catch(...){if(wasReady)startDevice();throw;}
+                    if(wasReady)startDevice();
+                    std::cout<<"Saved to owner-selected new .rtk path; MIC MUTED + SONG PAUSED.\n";
+                }else if(op=="reconnect"){
+                    rt.monitoring.store(false);rt.musicPlaying.store(false);
+                    if(deviceActive){ma_device_uninit(&device);deviceActive=false;}
+                    roomtone::recovery::freeze(
+                        rt.seekRequest,rt.rewindRequest,rt.songPosition,rt.mixer.songFrames());
+                    // Callback is fully stopped; clear stale reflections.
+                    rt.mixer.vocal.reset();
+                    if(startDevice())std::cout<<"Reconnected MUTED + PAUSED; song position preserved.\n";
+                    else std::cout<<"Reconnect failed; voice and music remain muted. Retry after checking devices.\n";
+                }else if(op=="seek"){
+                    if(!rt.mixer.hasSong()){std::cout<<"No song loaded\n";continue;}
+                    in>>value;if(value.empty()||(in>>extra))throw std::invalid_argument("seek requires one seconds value");
+                    const auto seek=roomtone::parseSeekFrames(value,
+                        static_cast<std::size_t>(rt.songPosition.load()),rt.mixer.songFrames());
+                    rt.seekRequest.store(static_cast<std::uint64_t>(seek));
+                    std::cout<<"Seek queued to "<<seek/48000.0<<"s; voice monitoring unchanged.\n";
+                }else if(op=="loop"){
+                    in>>value;
+                    if((value!="on"&&value!="off")||(in>>extra))
+                        throw std::invalid_argument("loop requires on or off");
+                    rt.repeat.store(value=="on");
+                    std::cout<<"Repeat "<<value<<"\n";
+                }else if(op=="m"||op=="mute"){
+                    if(!deviceActive||rt.interrupted.load()){
+                        std::cout<<"Audio device unavailable; reconnect before monitoring.\n";continue;
+                    }
+                    const bool next=!rt.monitoring.load();
+                    rt.monitoring.store(next);
+                    std::cout<<(next?"MIC ON — stop immediately for acoustic feedback":"MIC MUTED")<<"\n";
+                }else if(op=="p"||op=="play"){
+                    if(!deviceActive||rt.interrupted.load()){
+                        std::cout<<"Audio device unavailable; reconnect before playback.\n";continue;
+                    }
+                    if(!rt.mixer.hasSong()){std::cout<<"No song loaded\n";continue;}
+                    const bool next=!rt.musicPlaying.load();
+                    if(next&&rt.songPosition.load()>=rt.mixer.songFrames())rt.rewindRequest.store(true);
+                    rt.musicPlaying.store(next);
+                    std::cout<<(next?"SONG PLAYING":"SONG PAUSED")<<"\n";
+                }else if(op=="r"||op=="restart"){
+                    if(!deviceActive||rt.interrupted.load()){
+                        std::cout<<"Audio device unavailable; reconnect before playback.\n";continue;
+                    }
+                    if(!rt.mixer.hasSong()){std::cout<<"No song loaded\n";continue;}
+                    rt.rewindRequest.store(true);rt.musicPlaying.store(true);
+                    std::cout<<"SONG RESTART REQUESTED\n";
+                }else if(op=="lyrics"||op=="next-line"){
+                    if(!hasHandoff||rt.session.lines.empty()){
+                        std::cout<<"No imported timed lyrics. Choose --handoff session.rtk\n";continue;
+                    }
+                    const auto ms=static_cast<std::uint32_t>(
+                        std::min<std::uint64_t>(rt.songPosition.load()/48,720000));
+                    const auto index=roomtone::lyricIndexAt(rt.session,ms);
+                    if(op=="next-line"){
+                        const auto next=index==rt.session.lines.size()?0:index+1;
+                        if(next>=rt.session.lines.size()){std::cout<<"No later lyric\n";continue;}
+                        const auto target=std::clamp<std::int64_t>(
+                            static_cast<std::int64_t>(rt.session.lines[next].milliseconds)+rt.session.offsetMs,
+                            0,static_cast<std::int64_t>(rt.mixer.songFrames()/48));
+                        rt.seekRequest.store(static_cast<std::uint64_t>(target)*48);
+                        std::cout<<"Next lyric seek queued at "<<target/1000.0<<" seconds\n";
+                    }else{
+                        std::cout<<"Song "<<ms/1000.0<<"s | ";
+                        if(index==rt.session.lines.size())std::cout<<"Get ready...";
+                        else std::cout<<rt.session.lines[index].text;
+                        if(index+1<rt.session.lines.size())
+                            std::cout<<" | NEXT: "<<rt.session.lines[index+1].text;
+                        std::cout<<"\n";
+                    }
+                }else if(op=="status"){
+                    std::cout<<"Mic "<<(rt.monitoring.load()?"ON":"MUTED")
+                             <<"; song "<<(rt.musicPlaying.load()?"PLAYING":"PAUSED")
+                             <<"; position "<<rt.songPosition.load()/48000<<"/"<<rt.mixer.songFrames()/48000
+                             <<" seconds; repeat="<<(rt.repeat.load()?"on":"off")
+                             <<"; driver="<<(rt.interrupted.load()?"INTERRUPTED":"running")
+                             <<" (callback-reported; NOT synchronized with browser)\n";
+                }else{
+                    in>>value;
+                    if(value.empty()||(in>>extra))
+                        throw std::invalid_argument("expected one numeric argument");
+                    if(!changeLevel(rt,op,value))throw std::invalid_argument("unknown command");
+                    std::cout<<op<<" -> "<<value<<" (applies on next callback)\n";
+                }
+            }catch(const std::exception& e){
+                std::cout<<"Rejected command: "<<e.what()<<"\n";
+            }
+        }
+        rt.monitoring.store(false);rt.musicPlaying.store(false);
+        if(deviceActive)ma_device_uninit(&device);
+        ma_context_uninit(&context);
+        std::cout<<"Stopped. No audio was saved.\n";
+        return 0;
+    }catch(const std::exception& e){
+        std::cerr<<"Invalid configuration: "<<e.what()<<"\n";
+        return 1;
+    }
+#else
+    (void)argc;(void)argv;
+    std::cerr<<"This experimental executable requires Windows WASAPI.\n";
+    return 1;
+#endif
+}
