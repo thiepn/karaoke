@@ -1,4 +1,7 @@
 #include "../src/desktop_ui.hpp"
+#include "../src/session_io_win.hpp"
+#include <fstream>
+#include <iterator>
 #include <iostream>
 #include <stdexcept>
 int main(){
@@ -58,6 +61,36 @@ int main(){
    MSG pending{};
    if(PeekMessageW(&pending,nullptr,WM_QUIT,WM_QUIT,PM_NOREMOVE))
     throw std::runtime_error("Lyric chooser incorrectly posted process-wide quit");
+  }
+  // No audio hardware: exercise actual Windows CREATE_NEW semantics in an
+  // isolated OS temporary directory. Never overwrite an unrelated file.
+  {
+   wchar_t buffer[MAX_PATH]={};
+   const DWORD length=GetTempPathW(MAX_PATH,buffer);
+   if(!length||length>=MAX_PATH)throw std::runtime_error("Windows temp path unavailable");
+   const auto file=std::filesystem::path(buffer)/
+    (L"roomtone-a3-io-test-"+std::to_wstring(GetCurrentProcessId())+L".rtk");
+   if(std::filesystem::exists(file))
+    throw std::runtime_error("Refusing to overwrite existing test fixture");
+   roomtone::Handoff session;
+   session.audioName="original.wav";session.title="Source owned";
+   session.startMs=1450;
+   try{
+    roomtone::local_file::saveNew(file,session);
+    std::ifstream input(file,std::ios::binary);
+    const std::string data((std::istreambuf_iterator<char>(input)),std::istreambuf_iterator<char>());
+    auto decoded=roomtone::parseHandoff(data);
+    if(decoded.audioName!=session.audioName||decoded.startMs!=1450)
+     throw std::runtime_error("Saved local session did not roundtrip");
+    bool refused=false;
+    try{roomtone::local_file::saveNew(file,session);}
+    catch(const std::exception&){refused=true;}
+    if(!refused)throw std::runtime_error("Existing .rtk overwritten");
+    std::ifstream reread(file,std::ios::binary);
+    const std::string retained((std::istreambuf_iterator<char>(reread)),std::istreambuf_iterator<char>());
+    if(retained!=data)throw std::runtime_error("Previously saved bytes changed on collision");
+   }catch(...){DeleteFileW(file.c_str());throw;}
+   if(!DeleteFileW(file.c_str()))throw std::runtime_error("Failed to remove temp session");
   }
   const int result=window.run();
   if(result!=0||snapshots==0||playEvents!=1||muteEvents!=1||previousEvents!=1||browseEvents!=1||loopEvents!=1||offsetEvents!=1||saveEvents!=1||modalMuteEvents!=1||!compactLayout||topologyEvents<1||tickEvents==0||seekEvents!=1||lastSeek!=43)

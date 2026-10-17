@@ -9,6 +9,7 @@
 #include "lrc.hpp"
 #include "practice.hpp"
 #include "session_export.hpp"
+#include "session_io_win.hpp"
 #include "desktop_ui.hpp"
 #include "device_recovery.hpp"
 #include <algorithm>
@@ -200,17 +201,6 @@ static std::wstring chooseSessionSaveFile() {
 // CREATE_NEW makes export fail closed instead of overwriting an unrelated
 // user document or a concurrently changed prior export. No persistent
 // background autosave, temp database, credential or account.
-static void saveSessionNew(const std::filesystem::path& file,const std::string& encoded) {
- const HANDLE handle=CreateFileW(file.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,
-                                 FILE_ATTRIBUTE_NORMAL,nullptr);
- if(handle==INVALID_HANDLE_VALUE)
-  throw std::runtime_error("Session destination already exists or cannot be created; select a NEW .rtk filename");
- DWORD written=0;
- const BOOL success=WriteFile(handle,encoded.data(),static_cast<DWORD>(encoded.size()),&written,nullptr);
- const BOOL durable=success&&written==encoded.size()&&FlushFileBuffers(handle);
- CloseHandle(handle);
- if(!durable){DeleteFileW(file.c_str());throw std::runtime_error("Could not complete local session export");}
-}
 static int chooseDeviceIndex(const char* label,ma_device_info* list,ma_uint32 count){
     for(;;){
         std::cout<<label<<" device (-1 or Enter = Windows default):\n";
@@ -845,10 +835,9 @@ int main(int argc,char** argv) {
                                 selectedSongFile,selectedSongFile,
                                 rt.songPosition.load(),rt.mixer.songFrames(),
                                 rt.repeat.load(),rt.abStart.load(),rt.abEnd.load(),rt.abLoop.load());
-                            const auto encoded=roomtone::session_export::encode(exportSession);
                             const auto destination=chooseSessionSaveFile();
                             if(!destination.empty()){
-                                saveSessionNew(std::filesystem::path(destination),encoded);
+                                roomtone::local_file::saveNew(std::filesystem::path(destination),exportSession);
                                 reopenIfReady();
                                 notice=L"Practice saved to a NEW local .rtk file. Voice MUTED, music PAUSED.";
                             }else{
@@ -1062,7 +1051,7 @@ int main(int argc,char** argv) {
                             selectedSongFile,selectedSongFile,
                             rt.songPosition.load(),rt.mixer.songFrames(),
                             rt.repeat.load(),rt.abStart.load(),rt.abEnd.load(),rt.abLoop.load());
-                        saveSessionNew(destination,roomtone::session_export::encode(session));
+                        roomtone::local_file::saveNew(destination,session);
                     }catch(...){if(wasReady)startDevice();throw;}
                     if(wasReady)startDevice();
                     std::cout<<"Saved to owner-selected new .rtk path; MIC MUTED + SONG PAUSED.\n";
