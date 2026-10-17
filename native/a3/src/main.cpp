@@ -586,11 +586,31 @@ int main(int argc,char** argv) {
                     ?L"Audio unavailable. Voice and music remain muted."
                     :lastDeviceIssue+L" Voice and music remain muted.";
             };
+            const auto capturePractice=[&]()->roomtone::song_queue::Practice{
+                // Owner thread ONLY, after safeStop() has joined the original
+                // callback and resolved any pending seek/rewind.
+                roomtone::song_queue::Practice state;
+                state.session=hasHandoff?rt.session:roomtone::Handoff{};
+                state.displayTitle=hasHandoff?rt.session.title:selectedSongFile;
+                state.hasSession=hasHandoff;
+                state.importedOffset=importedLyricOffset;
+                state.frames=rt.songPosition.load();
+                state.repeat=rt.repeat.load();
+                state.loopA=rt.abStart.load();state.loopB=rt.abEnd.load();
+                state.loopValid=rt.abLoop.load();
+                state.startMarked=rt.practiceStartMarked;
+                return state;
+            };
             const auto activateSong=[&](const std::filesystem::path& selected,
-                                           std::vector<float> decoded){
+                                        std::vector<float> decoded,
+                                        const std::optional<roomtone::song_queue::Practice>& resume=std::nullopt){
                 if(decoded.empty())throw std::runtime_error("No decoded song frames");
                 const bool previouslyReady=deviceActive&&!rt.interrupted.load();
                 safeStop(); // join the ONE original callback before replacing PCM
+                if(songQueue.size()&&!songQueue.rememberCurrent(capturePractice()))
+                    throw std::runtime_error("Queued source identity changed; previous owner state retained");
+                // Every successful transition resets source-specific state before
+                // optionally restoring ONLY the target path's own volatile copy.
                 rt.seekRequest.store(roomtone::recovery::NoSeek);
                 rt.rewindRequest.store(false);
                 rt.mixer.replaceSong(std::move(decoded));
@@ -600,28 +620,56 @@ int main(int argc,char** argv) {
                 rt.practiceStartMarked=false;rt.repeat.store(false);importedLyricOffset=0;
                 selectedSongFile=selected.filename().u8string();
                 displayTitle=roomtone::desktop::wide(selectedSongFile);
+                if(resume){
+                    // A second file with an identical filename never receives
+                    // the other's session: the queue indexes full user-picked
+                    // paths, and each cached entry is bound to its own path.
+                    if(resume->hasSession&&resume->session.audioName!=selectedSongFile)
+                        throw std::runtime_error("Target practice source does not match original audio");
+                    const auto frames=std::min<std::uint64_t>(resume->frames,rt.mixer.songFrames());
+                    rt.songPosition.store(frames);
+                    rt.seekRequest.store(frames); // consumed on first reopened callback
+                    rt.session=resume->hasSession?resume->session:roomtone::Handoff{};
+                    hasHandoff=resume->hasSession;
+                    importedLyricOffset=resume->importedOffset;
+                    const auto a=std::min<std::uint64_t>(resume->loopA,rt.mixer.songFrames());
+                    const auto b=std::min<std::uint64_t>(resume->loopB,rt.mixer.songFrames());
+                    rt.abStart.store(static_cast<std::size_t>(a));
+                    rt.abEnd.store(static_cast<std::size_t>(b));
+                    rt.abLoop.store(resume->loopValid&&roomtone::practice::validAB(
+                        a,b,rt.mixer.songFrames()));
+                    rt.practiceStartMarked=resume->startMarked;
+                    rt.repeat.store(resume->repeat);
+                    if(hasHandoff)
+                        displayTitle=roomtone::desktop::wide(
+                            resume->displayTitle.empty()?rt.session.title:resume->displayTitle);
+                }
                 rt.monitoring.store(false);rt.musicPlaying.store(false);
                 if(previouslyReady){
                     safeRestart();
-                    if(!deviceActive)return; // keep real actionable WASAPI error
-                    notice=L"Original song changed. Previous lyrics and A-B cleared. Music PAUSED and voice MUTED.";
+                    if(!deviceActive)return; // keep actionable WASAPI issue
+                    notice=resume
+                       ?L"Queued song and its OWN practice restored. Voice MUTED, music PAUSED."
+                       :L"New song loaded. Previous source lyrics cleared; voice MUTED, music PAUSED.";
                 }else{
-                    notice=L"Song loaded offline. Reconnect explicitly; microphone and music remain muted.";
+                    notice=L"Song selected offline. Reconnect explicitly; voice/music remain muted.";
                 }
             };
             const auto activateQueueIndex=[&](std::size_t index){
-                if(!songQueue.canSelect(index))throw std::invalid_argument("Queued song index outside owner list");
+                if(!songQueue.canSelect(index))throw std::invalid_argument("Queued song outside owner list");
                 if(index==songQueue.currentIndex()){
-                    notice=L"Already on selected queued song; no playback state changed.";return;
+                    notice=L"Already selected; no playback, lyric or queue changes.";return;
                 }
-                // Mute immediately before potentially blocking local decode;
-                // failed decode leaves current PCM, owner index, lyrics intact.
+                // Mute BEFORE disk IO. A decode failure preserves both current
+                // original PCM and all previous path-owned practice state.
                 rt.monitoring.store(false);rt.musicPlaying.store(false);
-                const auto& localPath=songQueue.at(index);
-                auto next=loadSong("",localPath.wstring());
-                if(next.empty())throw std::runtime_error("Queued song could not decode");
-                activateSong(localPath,std::move(next));
-                songQueue.commit(index);
+                const auto target=songQueue.at(index);
+                const auto saved=songQueue.practice(index);
+                auto next=loadSong("",target.wstring());
+                if(next.empty())throw std::runtime_error("Queued original song could not decode");
+                activateSong(target,std::move(next),saved);
+                if(!songQueue.commit(index))
+                    throw std::runtime_error("Queue changed during owner-selected transition");
             };
             roomtone::desktop::Window window;
             window.controller.deviceChanged=[&]{deviceTopologyDirty=true;};
