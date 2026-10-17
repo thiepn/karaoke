@@ -10,10 +10,16 @@ int main(){
   roomtone::desktop::Window window;
   unsigned snapshots=0,playEvents=0,muteEvents=0,seekEvents=0,lastSeek=0,topologyEvents=0,tickEvents=0,previousEvents=0,browseEvents=0,modalMuteEvents=0,deviceModalMuteEvents=0,queueModalMuteEvents=0,loopEvents=0,offsetEvents=0,saveEvents=0,queueActionEvents=0,manageQueueEvents=0,effectsEvents=0,recoveryEvents=0,sectionEvents=0;
   window.syntheticTest=true;
-  bool compactLayout=false,focusLayoutSafe=false,focusSafetyVisible=false;
+  bool compactLayout=false,focusLayoutSafe=false,focusSafetyVisible=false,compactFocusResized=false;
   unsigned focusSnapshots=0;
   window.controller.snapshot=[&]{
    if(window.hwnd&&window.focusedLyrics){
+    // Real native WM_SIZE at the supported minimum outer window dimensions.
+    // This is not a mocked layout or a physical screen-reader assertion.
+    if(!compactFocusResized){
+      compactFocusResized=true;
+      SetWindowPos(window.hwnd,nullptr,0,0,620,700,SWP_NOMOVE|SWP_NOZORDER);
+    }
     ++focusSnapshots;
     focusSafetyVisible=IsWindowVisible(window.buttons[0])&&
       IsWindowVisible(window.buttons[16])&&IsWindowVisible(window.buttons[17])&&
@@ -148,7 +154,7 @@ int main(){
    if(!choice||*choice!=1)throw std::runtime_error("Native authored section picker accepted wrong cue");
   }
   const int result=window.run();
-  if(result!=0||snapshots==0||playEvents!=1||muteEvents!=1||previousEvents!=1||browseEvents!=1||loopEvents!=1||offsetEvents!=1||saveEvents!=1||queueActionEvents!=4||manageQueueEvents!=4||effectsEvents!=7||recoveryEvents!=1||sectionEvents!=3||focusSnapshots<1||!focusLayoutSafe||!focusSafetyVisible||
+  if(result!=0||snapshots==0||playEvents!=1||muteEvents!=1||previousEvents!=1||browseEvents!=1||loopEvents!=1||offsetEvents!=1||saveEvents!=1||queueActionEvents!=4||manageQueueEvents!=4||effectsEvents!=7||recoveryEvents!=1||sectionEvents!=3||focusSnapshots<1||!focusLayoutSafe||!focusSafetyVisible||!compactFocusResized||
       !window.focusedLyrics||window.lyricScale!=0||deviceModalMuteEvents!=1||queueModalMuteEvents!=1||modalMuteEvents!=1||!compactLayout||topologyEvents<1||tickEvents==0||seekEvents!=1||lastSeek!=43)
    throw std::runtime_error("in-process control/seek message, modal lifetime and focus");
   if(roomtone::desktop::wide("Nacht \xC3\xBC""ber")!=L"Nacht \xFC""ber")
