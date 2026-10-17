@@ -302,12 +302,12 @@ int main(int argc,char** argv) {
         }
         roomtone::Handoff imported;
         bool hasHandoff=false;
-        const originalFileName=[&]()->std::string{
+        const auto originalFileName=[&]()->std::string{
             return chosenSong.empty()
                 ?std::filesystem::u8path(opt.song).filename().u8string()
                 :std::filesystem::path(chosenSong).filename().u8string();
         };
-        const localLyrics=[&](const std::filesystem::path& file,
+        const auto localLyrics=[&](const std::filesystem::path& file,
                                    const std::string& currentAudioName)->roomtone::Handoff{
             std::string extension=file.extension().u8string();
             std::transform(extension.begin(),extension.end(),extension.begin(),
