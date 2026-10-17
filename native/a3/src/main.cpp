@@ -605,6 +605,11 @@ int main(int argc,char** argv) {
                                         std::vector<float> decoded,
                                         const std::optional<roomtone::song_queue::Practice>& resume=std::nullopt){
                 if(decoded.empty())throw std::runtime_error("No decoded song frames");
+                // Reject any mismatched cached handoff BEFORE touching PCM,
+                // old queue selection, microphone or source-owned lyrics.
+                if(resume&&resume->hasSession&&
+                   resume->session.audioName!=selected.filename().u8string())
+                    throw std::runtime_error("Queued practice belongs to a different audio filename");
                 const bool previouslyReady=deviceActive&&!rt.interrupted.load();
                 safeStop(); // join the ONE original callback before replacing PCM
                 if(songQueue.size()&&!songQueue.rememberCurrent(capturePractice()))
@@ -624,8 +629,6 @@ int main(int argc,char** argv) {
                     // A second file with an identical filename never receives
                     // the other's session: the queue indexes full user-picked
                     // paths, and each cached entry is bound to its own path.
-                    if(resume->hasSession&&resume->session.audioName!=selectedSongFile)
-                        throw std::runtime_error("Target practice source does not match original audio");
                     const auto frames=std::min<std::uint64_t>(resume->frames,rt.mixer.songFrames());
                     rt.songPosition.store(frames);
                     rt.seekRequest.store(frames); // consumed on first reopened callback
@@ -664,11 +667,16 @@ int main(int argc,char** argv) {
                 // original PCM and all previous path-owned practice state.
                 rt.monitoring.store(false);rt.musicPlaying.store(false);
                 const auto target=songQueue.at(index);
-                const auto saved=songQueue.practice(index);
+                const auto before=roomtone::song_queue::observe(target);
+                if(!before)throw std::runtime_error("Queued audio path unavailable. Original song retained");
+                const auto saved=songQueue.verifiedPractice(index,*before);
                 auto next=loadSong("",target.wstring());
                 if(next.empty())throw std::runtime_error("Queued original song could not decode");
+                const auto after=roomtone::song_queue::observe(target);
+                if(!after||!before->same(*after))
+                    throw std::runtime_error("Queued song changed during decode. Original song retained; voice muted");
                 activateSong(target,std::move(next),saved);
-                if(!songQueue.commit(index))
+                if(!songQueue.commitVerified(index,*after))
                     throw std::runtime_error("Queue changed during owner-selected transition");
             };
             roomtone::desktop::Window window;
@@ -680,7 +688,10 @@ int main(int argc,char** argv) {
                     std::wstring row=std::to_wstring(i+1)+L".  "+
                         roomtone::desktop::wide(songQueue.at(i).filename().u8string());
                     if(i==songQueue.currentIndex())row+=L"  [CURRENT]";
-                    else if(songQueue.practice(i))row+=L"  [SAVED PRACTICE]";
+                    else if(const auto version=roomtone::song_queue::observe(songQueue.at(i));
+                            version&&songQueue.verifiedPractice(i,*version))
+                        row+=L"  [SAVED PRACTICE]";
+                    else if(songQueue.practice(i))row+=L"  [SOURCE CHANGED - PRACTICE NOT RESTORED]";
                     labels.push_back(std::move(row));
                 }
                 auto selected=roomtone::desktop::selectQueuedSong(
