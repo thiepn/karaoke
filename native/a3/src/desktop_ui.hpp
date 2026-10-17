@@ -35,7 +35,8 @@ enum Action {
  ChooseSong,ChooseSession,ChooseDevices,Reconnect,EmergencyMute,GainDown,GainUp,
   PreviousLine,BrowseLyrics,MarkLoopA,MarkLoopB,ClearAB,ToggleAB,OffsetEarlier,OffsetLater,OffsetReset,SaveSession,AddQueueSong,ShowQueue,NextQueueSong,PreviousQueueSong,
   RemoveQueuedSong,MoveQueuedUp,MoveQueuedDown,ClearPendingQueue,
-  FeedbackDown,FeedbackUp,DelayShorter,DelayLonger,DryVoice,RestoreEffects,ShowEffects,ShowRecovery
+  FeedbackDown,FeedbackUp,DelayShorter,DelayLonger,DryVoice,RestoreEffects,ShowEffects,ShowRecovery,
+  ChooseLyricSection,SeekLoopA,SeekLoopB
 };
 struct Snapshot {
  std::wstring title,previous,current,next,input,output,notice;
@@ -201,7 +202,10 @@ struct Window {
      {OffsetEarlier,L"Lyrics 100 ms earlier\tCtrl+["},
      {OffsetLater,L"Lyrics 100 ms later\tCtrl+]"},
      {OffsetReset,L"Reset lyric offset\tCtrl+0"},
-     {SaveSession,L"Save local practice session\tCtrl+S"}};
+     {SaveSession,L"Save local practice session\tCtrl+S"},
+     {ChooseLyricSection,L"Select A-B from authored lyric lines\tCtrl+7"},
+     {SeekLoopA,L"Pause and seek to marker A\tCtrl+8"},
+     {SeekLoopB,L"Pause and seek to marker B\tCtrl+9"}};
     for(const auto& entry:entries)AppendMenuW(practiceMenu,MF_STRING,
        static_cast<UINT_PTR>(entry.action),entry.title);
     AppendMenuW(menubar,MF_POPUP,reinterpret_cast<UINT_PTR>(practiceMenu),L"&Practice");
@@ -295,6 +299,9 @@ struct Window {
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::RestoreEffects,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::ShowEffects,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::ShowRecovery,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::ChooseLyricSection,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::SeekLoopA,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::SeekLoopB,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::Play,BN_CLICKED),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::EmergencyMute,BN_CLICKED),0);
         PostMessageW(h,WM_CLOSE,0,0);
@@ -337,7 +344,7 @@ struct Window {
     else if(w==VK_F10)self->notify(Play);
     return 0;
    case WM_COMMAND:
-    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=146)
+    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=149)
      self->notify(static_cast<Action>(LOWORD(w)));
     return 0;
    case WM_CLOSE:
@@ -392,6 +399,9 @@ struct Window {
         case 'P':shortcut=PreviousQueueSong;break;
         case '5':shortcut=DryVoice;break;
         case '6':shortcut=RestoreEffects;break;
+        case '7':shortcut=ChooseLyricSection;break;
+        case '8':shortcut=SeekLoopA;break;
+        case '9':shortcut=SeekLoopB;break;
         case 'E':shortcut=ShowEffects;break;
         case 'H':shortcut=ShowRecovery;break;
        case VK_OEM_4:shortcut=OffsetEarlier;break;
