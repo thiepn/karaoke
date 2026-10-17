@@ -8,7 +8,7 @@ int main(){
 #ifdef _WIN32
  try{
   roomtone::desktop::Window window;
-  unsigned snapshots=0,playEvents=0,muteEvents=0,seekEvents=0,lastSeek=0,topologyEvents=0,tickEvents=0,previousEvents=0,browseEvents=0,modalMuteEvents=0,deviceModalMuteEvents=0,queueModalMuteEvents=0,loopEvents=0,offsetEvents=0,saveEvents=0,queueActionEvents=0,manageQueueEvents=0,effectsEvents=0,recoveryEvents=0,sectionEvents=0,suspendEvents=0;
+  unsigned snapshots=0,playEvents=0,muteEvents=0,seekEvents=0,lastSeek=0,topologyEvents=0,tickEvents=0,previousEvents=0,browseEvents=0,modalMuteEvents=0,deviceModalMuteEvents=0,queueModalMuteEvents=0,loopEvents=0,offsetEvents=0,saveEvents=0,queueActionEvents=0,manageQueueEvents=0,effectsEvents=0,recoveryEvents=0,sectionEvents=0,suspendEvents=0,signalsEvents=0;
   window.syntheticTest=true;
   bool compactLayout=false,focusLayoutSafe=false,focusSafetyVisible=false,compactFocusResized=false;
   unsigned focusSnapshots=0;
@@ -57,6 +57,7 @@ int main(){
   };
   window.controller.action=[&](roomtone::desktop::Action action){
    if(action==roomtone::desktop::SuspendAudio)++suspendEvents;
+   if(action==roomtone::desktop::ShowSignals)++signalsEvents;
    if(action==roomtone::desktop::Play)++playEvents;
    if(action==roomtone::desktop::EmergencyMute)++muteEvents;
    if(action==roomtone::desktop::PreviousLine)++previousEvents;
@@ -102,6 +103,22 @@ int main(){
    MSG pending{};
    if(PeekMessageW(&pending,nullptr,WM_QUIT,WM_QUIT,PM_NOREMOVE))
     throw std::runtime_error("Lyric chooser incorrectly posted process-wide quit");
+  }
+  // A real Win32 diagnostics modal handles F8/F7 while its owner is
+  // disabled; it only presents synthetic numeric values, never touches audio.
+  {
+   roomtone::desktop::SignalInspector inspector;
+   inspector.synthetic=true;
+   inspector.readout=[](){return L"WASAPI READY\nInput peak 42%\nOutput peak 20%";};
+   unsigned muted=0,stopped=0;
+   inspector.emergencyMute=[&]{++muted;};
+   inspector.suspendDuplex=[&]{++stopped;};
+   inspector.run();
+   if(muted!=1||stopped!=1||!inspector.observedReadout)
+    throw std::runtime_error("Native live signal modal, focus F8/F7, or source readout failed");
+   MSG pending{};
+   if(PeekMessageW(&pending,nullptr,WM_QUIT,WM_QUIT,PM_NOREMOVE))
+    throw std::runtime_error("Closing signal modal incorrectly quit owner application");
   }
   // No audio hardware: exercise actual Windows CREATE_NEW semantics in an
   // isolated OS temporary directory. Never overwrite an unrelated file.
@@ -155,7 +172,7 @@ int main(){
    if(!choice||*choice!=1)throw std::runtime_error("Native authored section picker accepted wrong cue");
   }
   const int result=window.run();
-  if(result!=0||snapshots==0||playEvents!=1||muteEvents!=1||previousEvents!=1||browseEvents!=1||loopEvents!=1||offsetEvents!=1||saveEvents!=1||queueActionEvents!=4||manageQueueEvents!=4||effectsEvents!=7||recoveryEvents!=1||sectionEvents!=3||suspendEvents!=2||focusSnapshots<1||!focusLayoutSafe||!focusSafetyVisible||!compactFocusResized||
+  if(result!=0||snapshots==0||playEvents!=1||muteEvents!=1||previousEvents!=1||browseEvents!=1||loopEvents!=1||offsetEvents!=1||saveEvents!=1||queueActionEvents!=4||manageQueueEvents!=4||effectsEvents!=7||recoveryEvents!=1||signalsEvents!=1||sectionEvents!=3||suspendEvents!=2||focusSnapshots<1||!focusLayoutSafe||!focusSafetyVisible||!compactFocusResized||
       !window.focusedLyrics||window.lyricScale!=0||deviceModalMuteEvents!=1||queueModalMuteEvents!=1||modalMuteEvents!=1||!compactLayout||topologyEvents<1||tickEvents==0||seekEvents!=1||lastSeek!=43)
    throw std::runtime_error("in-process control/seek message, modal lifetime and focus");
   if(roomtone::desktop::wide("Nacht \xC3\xBC""ber")!=L"Nacht \xFC""ber")
