@@ -29,7 +29,7 @@ int main(){
  need(list.size()==Queue::MaxSongs,"reject no state loss");
  roomtone::song_queue::Practice owner;
  owner.frames=144000;owner.loopA=48000;owner.loopB=96000;
- owner.rehearsalCues={24000,96000,144000};
+ owner.rehearsalCues={24000,96000,144000};owner.backingSpeed=0.8f;
  owner.repeat=true;owner.loopValid=true;owner.startMarked=true;
  owner.hasSession=true;owner.session.audioName="one.wav";
  owner.session.title="Owner source";
@@ -44,11 +44,11 @@ int main(){
  need(list.commit(0),"return to original");
  auto recovered=list.practice(0);
  need(recovered&&recovered->frames==144000&&recovered->rehearsalCues.size()==3&&
-      recovered->rehearsalCues[1]==96000&&recovered->session.lines.size()==2&&
+      recovered->rehearsalCues[1]==96000&&recovered->backingSpeed==0.8f&&recovered->session.lines.size()==2&&
       recovered->session.offsetMs==-250&&recovered->repeat,"original source state recovered");
  need(list.move(0,1)&&list.currentIndex()==1,"current entry reorder tracks identity");
  need(list.at(1).filename()=="one.wav"&&list.practice(1)->frames==144000&&
-      list.practice(1)->rehearsalCues[2]==144000,
+      list.practice(1)->rehearsalCues[2]==144000&&list.practice(1)->backingSpeed==0.8f,
       "reorder retains original source snapshot");
  need(!list.remove(1)&&list.currentIndex()==1,"active source cannot be removed");
  need(list.remove(0)&&list.currentIndex()==0,"earlier inactive removal updates current index");

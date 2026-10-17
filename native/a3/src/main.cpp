@@ -15,6 +15,7 @@
 #include "desktop_ui.hpp"
 #include "device_recovery.hpp"
 #include "effect_controls.hpp"
+#include "practice_speed.hpp"
 #include "signal_diagnostics.hpp"
 #include "lyric_sections.hpp"
 #include <algorithm>
@@ -239,6 +240,7 @@ struct Runtime {
     std::atomic<bool> monitoring{false},musicPlaying{false},rewindRequest{false},repeat{false},interrupted{false};
     std::atomic<std::uint64_t> seekRequest{std::numeric_limits<std::uint64_t>::max()};
     std::atomic<float> wet,gain,echo,feedback,musicGain;
+    std::atomic<float> backingSpeed{roomtone::practice_speed::Normal};
     std::atomic<unsigned> echoMs;
     std::atomic<std::uint64_t> songPosition{0};
     roomtone::Handoff session;
@@ -283,6 +285,7 @@ static void callback(ma_device* device, void* output, const void* input, ma_uint
     const bool monitor=in&&rt->monitoring.load(std::memory_order_relaxed);
     const bool play=rt->musicPlaying.load(std::memory_order_relaxed);
     const float level=rt->musicGain.load(std::memory_order_relaxed);
+    const float backingSpeed=rt->backingSpeed.load(std::memory_order_relaxed);
     float capturePeak=0,outputPeak=0;
     for(ma_uint32 i=0;i<frames;++i) {
         if(in)capturePeak=std::max(capturePeak,roomtone::signal_diagnostics::sample(in[i]));
@@ -292,7 +295,7 @@ static void callback(ma_device* device, void* output, const void* input, ma_uint
                  rt->mixer.seekFrames(rt->abStart.load(std::memory_order_relaxed));
             else if(rt->mixer.songEnded())rt->mixer.rewind();
         }
-        const auto result=rt->mixer.render(in?in[i]:0.0f,monitor,play,level);
+        const auto result=rt->mixer.render(in?in[i]:0.0f,monitor,play,level,backingSpeed);
         out[i*2]=result.left;out[i*2+1]=result.right;
         outputPeak=std::max(outputPeak,std::max(
           roomtone::signal_diagnostics::sample(result.left),
@@ -612,6 +615,7 @@ int main(int argc,char** argv) {
                 state.importedOffset=importedLyricOffset;
                 state.frames=rt.songPosition.load();
                 state.rehearsalCues=rehearsalCues.items();
+                state.backingSpeed=rt.backingSpeed.load();
                 state.repeat=rt.repeat.load();
                 state.loopA=rt.abStart.load();state.loopB=rt.abEnd.load();
                 state.loopValid=rt.abLoop.load();
@@ -637,6 +641,7 @@ int main(int argc,char** argv) {
                 rt.rewindRequest.store(false);
                 rt.mixer.replaceSong(std::move(decoded));
                 rehearsalCues.clear(); // no original audio cue crosses source selection
+                rt.backingSpeed.store(roomtone::practice_speed::Normal);
                 rt.songPosition.store(0);
                 rt.session=roomtone::Handoff{};hasHandoff=false;
                 rt.abLoop.store(false);rt.abStart.store(0);rt.abEnd.store(0);
@@ -651,6 +656,7 @@ int main(int argc,char** argv) {
                     rt.songPosition.store(frames);
                     rt.seekRequest.store(frames); // consumed on first reopened callback
                     rehearsalCues.restore(resume->rehearsalCues,rt.mixer.songFrames());
+                    rt.backingSpeed.store(roomtone::practice_speed::safe(resume->backingSpeed));
                     rt.session=resume->hasSession?resume->session:roomtone::Handoff{};
                     hasHandoff=resume->hasSession;
                     importedLyricOffset=resume->importedOffset;
@@ -797,6 +803,7 @@ int main(int argc,char** argv) {
                 view.hasLyrics=hasHandoff&&!rt.session.lines.empty();
                 view.reverb=rt.wet.load();view.echo=rt.echo.load();view.music=rt.musicGain.load();view.gain=rt.gain.load();
                 view.feedback=rt.feedback.load();view.delayMs=rt.echoMs.load();
+                view.backingSpeed=rt.backingSpeed.load();
                 view.input=inputName.empty()?L"Windows default":roomtone::desktop::wide(inputName);
                 view.output=outputName.empty()?L"Windows default":roomtone::desktop::wide(outputName);
                 view.notice=rt.interrupted.load()&&deviceActive
@@ -1313,6 +1320,48 @@ int main(int argc,char** argv) {
                     case Action::ReverbUp:level(rt.wet,0.02f,0.25f);break;
                     case Action::EchoDown:level(rt.echo,-0.02f,0.35f);break;
                     case Action::EchoUp:level(rt.echo,0.02f,0.35f);break;
+                    case Action::SpeedDown:case Action::SpeedUp:case Action::SpeedReset:{
+                        if(!rt.mixer.hasSong()){
+                            notice=L"Select an original local instrumental before changing backing speed.";
+                            break;
+                        }
+                        // No microphone resampling and no second mixer/clock.
+                        // Mute and pause BEFORE changing musical pitch,
+                        // preventing an unexpected live level/pitch transition.
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        const float before=rt.backingSpeed.load();
+                        const float next=action==Action::SpeedReset
+                            ?roomtone::practice_speed::Normal
+                            :roomtone::practice_speed::step(before,
+                                action==Action::SpeedUp?1:-1);
+                        rt.backingSpeed.store(next);
+                        notice=L"Backing playback "+std::to_wstring(
+                            static_cast<int>(std::lround(next*100.0f)))+
+                            L"% (resampling CHANGES musical pitch/key). "
+                            L"Song PAUSED and microphone MUTED; voice DSP stays native 48 kHz.";
+                        break;
+                    }
+                    case Action::SpeedInfo:{
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        const float current=roomtone::practice_speed::safe(
+                            rt.backingSpeed.load());
+                        const auto detail=L"Original backing speed: "+
+                            std::to_wstring(static_cast<int>(std::lround(current*100.0f)))+
+                            L"%\nAvailable: 60-120% in 10% steps.\n\n"
+                            L"Slow or fast backing uses the ORIGINAL predecoded PCM and "
+                            L"its single WASAPI callback, changing musical PITCH as well "
+                            L"as duration. This is NOT pitch-preserving time stretching "
+                            L"and NOT a mic-to-speaker latency measurement.\n\n"
+                            L"Only the instrumental playback rate changes. Microphone "
+                            L"monitoring, gain and vocal DSP stay at 48 kHz. "
+                            L"Changing rate or opening this dialog leaves music "
+                            L"PAUSED and microphone MUTED. Rate is held only in "
+                            L"this song's volatile queue-owned practice, not .rtk.";
+                        MessageBoxW(window.hwnd,detail.c_str(),
+                            L"ROOMTONE | Original backing speed",MB_OK|MB_ICONINFORMATION);
+                        notice=L"Backing speed inspected. Voice MUTED and music PAUSED.";
+                        break;
+                    }
                     case Action::MusicDown:level(rt.musicGain,-0.03f,0.5f);break;
                     case Action::MusicUp:level(rt.musicGain,0.03f,0.5f);break;
                     case Action::GainDown:level(rt.gain,-0.02f,0.35f);break;
@@ -1699,6 +1748,17 @@ int main(int argc,char** argv) {
                         static_cast<std::size_t>(rt.songPosition.load()),rt.mixer.songFrames());
                     rt.seekRequest.store(static_cast<std::uint64_t>(seek));
                     std::cout<<"Seek queued to "<<seek/48000.0<<"s; voice monitoring unchanged.\n";
+                }else if(op=="speed"){
+                    in>>value;
+                    if(value.empty()||(in>>extra))
+                        throw std::invalid_argument("speed requires 0.60..1.20");
+                    const float next=readFloat(value);
+                    if(!std::isfinite(next)||next<roomtone::practice_speed::Minimum||
+                       next>roomtone::practice_speed::Maximum)
+                        throw std::invalid_argument("speed must be between 0.60 and 1.20");
+                    rt.monitoring.store(false);rt.musicPlaying.store(false);
+                    rt.backingSpeed.store(next);
+                    std::cout<<"Backing playback "<<next<<"x; PITCH CHANGES. Mic MUTED, song PAUSED; not time-stretching.\n";
                 }else if(op=="loop"){
                     in>>value;
                     if((value!="on"&&value!="off")||(in>>extra))
@@ -1755,7 +1815,8 @@ int main(int argc,char** argv) {
                     std::cout<<"Mic "<<(rt.monitoring.load()?"ON":"MUTED")
                              <<"; song "<<(rt.musicPlaying.load()?"PLAYING":"PAUSED")
                              <<"; position "<<rt.songPosition.load()/48000<<"/"<<rt.mixer.songFrames()/48000
-                             <<" seconds; repeat="<<(rt.repeat.load()?"on":"off")
+                             <<" seconds; backing-speed="<<rt.backingSpeed.load()<<"x (pitch changes)"
+                             <<"; repeat="<<(rt.repeat.load()?"on":"off")
                              <<"; driver="<<(rt.interrupted.load()?"INTERRUPTED":"running")
                              <<" (callback-reported; NOT synchronized with browser)\n";
                 }else{
