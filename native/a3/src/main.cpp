@@ -696,7 +696,11 @@ int main(int argc,char** argv) {
                 }
                 auto selected=roomtone::desktop::selectQueuedSong(
                     labels,songQueue.currentIndex(),window.hwnd,
-                    [&]{rt.monitoring.store(false);notice=L"VOICE MUTED (F8) in song queue.";});
+                    [&]{rt.monitoring.store(false);notice=L"VOICE MUTED (F8) in song queue.";},
+                    std::wstring(L"ROOMTONE | ")+operation,
+                    std::wstring(L"Choose a queued entry for ")+operation+
+                       L". Enter selects; Escape cancels; F8 mutes.",
+                    L"Confirm entry");
                 if(!selected)notice=std::wstring(operation)+L" canceled; previous queue retained; audio muted.";
                 return selected;
             };

@@ -580,11 +580,14 @@ inline std::optional<std::size_t> selectLyric(const std::vector<std::wstring>& r
 }
 inline std::optional<std::size_t> selectQueuedSong(
  const std::vector<std::wstring>& rows,std::size_t current,HWND owner,
- std::function<void()> emergencyMute={}){
+ std::function<void()> emergencyMute={},
+ std::wstring title=L"ROOMTONE | Local song queue",
+ std::wstring hint=L"Choose an owner-selected song. Enter selects; Esc cancels. No automatic playback.",
+ std::wstring confirm=L"Select song"){
  LyricChooser picker;picker.rows=&rows;picker.current=current;picker.owner=owner;
- picker.dialogTitle=L"ROOMTONE | Local song queue";
- picker.hintText=L"Choose an owner-selected local song. Enter selects; Esc cancels. No automatic playback.";
- picker.confirmText=L"Select song";
+ picker.dialogTitle=std::move(title);
+ picker.hintText=std::move(hint);
+ picker.confirmText=std::move(confirm);
  picker.emergencyMute=std::move(emergencyMute);
  return picker.run();
 }
