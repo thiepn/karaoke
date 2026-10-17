@@ -100,3 +100,10 @@ Inspect the native import confirmation summary (original filename, title, lyric 
 3. Repeat with duplicated timestamps, adjacent cues <=250 ms, offsets moving cues outside the original audio, empty handoff, and cancellation at each of the two modal stages and confirmation. Invalid or canceled selection must leave the previous A-B range untouched and cannot invent song timestamps.
 4. Check F8, keyboard focus/Enter/Escape, Win32 dialog ownership, 1366x768/high-DPI and NVDA/Narrator with real files. Test USB interruption mid-dialog; manual reconnect only, with no automatic microphone or music activation.
 5. Real speaker feedback, sampled audio latency, continuous recording, and USB hotplug remain NOT_TESTED. These must be performed separately with actual owner hardware; software CI does not qualify A4 release.
+
+## Owner acceptance — reading-first native lyric focus (NOT_TESTED)
+
+1. With microphone physically muted, original local song and matching source-backed lyrics, use View > Large-lyric focus (Ctrl+F) and adjust current lyric with Ctrl++ / Ctrl+-. Confirm original lyric content and previous/next context remain correct at changing song positions; no new audio source, speech synthesis, recording, playback or automatic monitoring appears.
+2. Confirm the original **MUTE VOICE NOW (F8)** remains visible, reachable and functional, with Play/Pause, Reconnect, transport, current device/voice status and notices also visible. Test F8 with focus on seek, play, reconnect and the mute button. Hiding previous controls must not trap focus; menu and keyboard shortcuts still work.
+3. Restore the original full native controls by toggling Ctrl+F. Test 620x700, 1366x768, larger monitors, 125-200% Windows display scaling, very long Unicode lyric text, keyboard Tab order, NVDA/Narrator and high-contrast themes. The source-focused lyric must not cover safety warnings.
+4. Real QuadCast/Pebble mic-to-speaker latency, feedback, monitoring in a room, USB unplug/replug and screen-reader usability remain NOT_TESTED. None of those can be signed off by the geometry and synthetic Win32 checks: **A4 physical NO GO**.
