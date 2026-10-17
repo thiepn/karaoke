@@ -186,7 +186,7 @@ struct Window {
      {Forward,L"+10 seconds"},{Restart,L"Start song"},{Repeat,L"Repeat OFF"},
      {NextLine,L"Next lyric (Ctrl+Right)"},{ReverbDown,L"Reverb -"},{ReverbUp,L"Reverb +"},
      {EchoDown,L"Echo -"},{EchoUp,L"Echo +"},{MusicDown,L"Music -"},
-     {MusicUp,L"Music +"},{ChooseSong,L"Change song"},{ChooseSession,L"Import .rtk"},
+     {MusicUp,L"Music +"},{ChooseSong,L"Change song"},{ChooseSession,L"Import .rtk / .lrc"},
      {ChooseDevices,L"Select devices"},{Reconnect,L"Reconnect (muted)"},
      {EmergencyMute,L"MUTE VOICE NOW (F8)"},
      {GainDown,L"Vocal gain -"},{GainUp,L"Vocal gain +"},

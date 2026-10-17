@@ -6,6 +6,7 @@
 #include "karaoke_mix.hpp"
 #include "transport.hpp"
 #include "handoff.hpp"
+#include "lrc.hpp"
 #include "desktop_ui.hpp"
 #include "device_recovery.hpp"
 #include <algorithm>
@@ -36,8 +37,8 @@ struct Options {
     float gain = 0.18f;
     float echo=0.12f,feedback=0.15f,musicGain=0.2f;
     unsigned echoMs=280;
-    std::string song,handoffFile;
-    bool list = false,probeSong=false,pickSong=false,guided=false,probeHandoff=false,pickHandoff=false,gui=false;
+    std::string song,handoffFile,lrcFile;
+    bool list = false,probeSong=false,pickSong=false,guided=false,probeHandoff=false,probeLrc=false,pickHandoff=false,gui=false;
 };
 static int readInteger(const std::string& s) {
     std::size_t count=0;
@@ -62,6 +63,7 @@ static Options parse(int argc,char** argv) {
         if(key=="--pick-song"){opt.pickSong=true;continue;}
         if(key=="--setup"){opt.guided=true;continue;}
         if(key=="--probe-handoff"){opt.probeHandoff=true;continue;}
+        if(key=="--probe-lrc"){opt.probeLrc=true;continue;}
         if(key=="--pick-handoff"){opt.pickHandoff=true;continue;}
         if(key=="--help"||key=="-h"){
             std::cout<<"ROOMTONE A3 Windows WASAPI proof-of-concept\n"
@@ -76,6 +78,8 @@ static Options parse(int argc,char** argv) {
                      <<"  --handoff PATH  import offline browser lyrics/position (.rtk)\n"
                      <<"  --pick-handoff  choose downloaded .rtk in Windows file picker\n"
                      <<"  --probe-handoff  validate .rtk WITHOUT opening devices\n"
+                     <<"  --lrc PATH  attach standard local .lrc lyrics to selected song\n"
+                     <<"  --probe-lrc  validate --lrc file WITHOUT opening devices\n"
                      <<"  --setup  guided mic/speaker device selection\n"
                      <<"  --gui  in-process Win32 karaoke view\n"
                      <<"  --console  original command-line controls\n"
@@ -95,6 +99,7 @@ static Options parse(int argc,char** argv) {
         else if(key=="--gain") opt.gain=readFloat(value);
         else if(key=="--song") opt.song=value;
         else if(key=="--handoff") opt.handoffFile=value;
+        else if(key=="--lrc") opt.lrcFile=value;
         else if(key=="--echo") opt.echo=readFloat(value);
         else if(key=="--feedback") opt.feedback=readFloat(value);
         else if(key=="--echo-ms") {const int n=readInteger(value);if(n<0)throw std::invalid_argument("negative echo-ms");opt.echoMs=static_cast<unsigned>(n);}
@@ -108,6 +113,10 @@ static Options parse(int argc,char** argv) {
        opt.echo<0||opt.echo>0.35f||opt.feedback<0||opt.feedback>0.35f||
        opt.echoMs<80||opt.echoMs>550||opt.musicGain<0||opt.musicGain>0.50f)
         throw std::invalid_argument("audio levels outside safe test range");
+    if(!opt.handoffFile.empty()&&!opt.lrcFile.empty())throw std::invalid_argument("choose one .rtk or .lrc source");
+    if(opt.probeHandoff&&opt.probeLrc)throw std::invalid_argument("select one offline lyric probe");
+    if(opt.probeLrc&&(opt.lrcFile.empty()||opt.pickSong||opt.pickHandoff||opt.guided))
+        throw std::invalid_argument("--probe-lrc needs --lrc PATH without interactive flags");
     if(opt.probeHandoff&&(opt.handoffFile.empty()||opt.pickHandoff||opt.pickSong||opt.guided))throw std::invalid_argument("--probe-handoff requires --handoff PATH without interactive flags");
     if(opt.probeSong&&(opt.song.empty()||opt.pickSong||opt.guided))
         throw std::invalid_argument("--probe-song needs --song PATH without --setup/--pick-song");
@@ -163,7 +172,7 @@ static std::wstring chooseHandoffFile(){
  OPENFILENAMEW d{};
  d.lStructSize=sizeof(d);d.lpstrFile=filename;
  d.nMaxFile=static_cast<DWORD>(sizeof(filename)/sizeof(filename[0]));
- d.lpstrFilter=L"ROOMTONE sessions (*.rtk)\0*.rtk\0All files\0*.*\0";
+ d.lpstrFilter=L"ROOMTONE timed lyrics (*.rtk;*.lrc)\0*.rtk;*.lrc\0ROOMTONE sessions (*.rtk)\0*.rtk\0Standard lyrics (*.lrc)\0*.lrc\0All files\0*.*\0";
  d.Flags=OFN_EXPLORER|OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
  if(GetOpenFileNameW(&d))return filename;
  const DWORD err=CommDlgExtendedError();
@@ -270,6 +279,13 @@ int main(int argc,char** argv) {
     try {
         Options opt=parse(argc,argv);
         if(argc==1){opt.guided=true;opt.gui=true;} // Double-click uses Win32 UI.
+        if(opt.probeLrc){
+            const auto lyrics=roomtone::loadLrc(std::filesystem::u8path(opt.lrcFile),
+                                                 "offline-probe.wav","Offline lyrics");
+            std::cout<<"OFFLINE_LRC_OK lyrics="<<lyrics.lines.size()
+                     <<"; NO audio devices opened.\n";
+            return 0;
+        }
         if(opt.probeHandoff){
             const auto session=roomtone::loadHandoff(opt.handoffFile);
             std::cout<<"OFFLINE_SESSION_OK audio="<<session.audioName<<" lyrics="<<session.lines.size()
@@ -286,8 +302,28 @@ int main(int argc,char** argv) {
         }
         roomtone::Handoff imported;
         bool hasHandoff=false;
+        const originalFileName=[&]()->std::string{
+            return chosenSong.empty()
+                ?std::filesystem::u8path(opt.song).filename().u8string()
+                :std::filesystem::path(chosenSong).filename().u8string();
+        };
+        const localLyrics=[&](const std::filesystem::path& file)->roomtone::Handoff{
+            std::string extension=file.extension().u8string();
+            std::transform(extension.begin(),extension.end(),extension.begin(),
+                           [](unsigned char c){return static_cast<char>(std::tolower(c));});
+            if(extension==".lrc"){
+                const auto filename=originalFileName();
+                if(filename.empty())throw std::invalid_argument("Choose original local song before importing LRC");
+                return roomtone::loadLrc(file,filename,filename);
+            }
+            if(extension==".rtk")return roomtone::loadHandoff(file);
+            throw std::invalid_argument("Native lyrics must be .rtk or .lrc");
+        };
         if(!opt.handoffFile.empty()&&!opt.list&&!opt.probeSong){
             imported=roomtone::loadHandoff(opt.handoffFile);hasHandoff=true;
+        }
+        if(!opt.lrcFile.empty()&&!opt.list&&!opt.probeSong){
+            imported=localLyrics(std::filesystem::u8path(opt.lrcFile));hasHandoff=true;
         }
         if(!opt.list&&!opt.probeSong&&(opt.pickHandoff||(opt.guided&&!hasHandoff))){
             bool choose=opt.pickHandoff;
@@ -306,7 +342,7 @@ int main(int argc,char** argv) {
             if(choose){
                 const auto selected=chooseHandoffFile();
                 if(!selected.empty()){
-                    imported=roomtone::loadHandoff(std::filesystem::path(selected));
+                    imported=localLyrics(std::filesystem::path(selected));
                     hasHandoff=true;
                 }
             }
@@ -314,9 +350,7 @@ int main(int argc,char** argv) {
         if(hasHandoff){
             if(opt.song.empty()&&chosenSong.empty())
                 throw std::invalid_argument("ROOMTONE session requires original local audio file");
-            const std::string filename=chosenSong.empty()
-              ?std::filesystem::u8path(opt.song).filename().u8string()
-              :std::filesystem::path(chosenSong).filename().u8string();
+            const std::string filename=originalFileName();
             if(filename!=imported.audioName)
                 throw std::invalid_argument("Selected local instrumental filename does not match original ROOMTONE session");
         }
@@ -724,7 +758,19 @@ int main(int argc,char** argv) {
                         rt.monitoring.store(false);rt.musicPlaying.store(false);
                         const auto path=chooseHandoffFile();
                         if(path.empty()){notice=L"Session selection canceled; microphone and music muted.";break;}
-                        const auto loaded=roomtone::loadHandoff(std::filesystem::path(path));
+                        auto loaded=localLyrics(std::filesystem::path(path));
+                        const bool directLrc=std::filesystem::path(path).extension()==L".lrc"||
+                            std::filesystem::path(path).extension()==L".LRC";
+                        if(directLrc){
+                            // Lyrics-only import retains position and A-B loop.
+                            loaded.startMs=static_cast<std::uint32_t>(
+                                std::min<std::uint64_t>(rt.songPosition.load()/48,720000));
+                            loaded.loop=rt.repeat.load();
+                            loaded.loopStartMs=static_cast<std::uint32_t>(
+                                std::min<std::uint64_t>(rt.abStart/48,720000));
+                            loaded.loopEndMs=static_cast<std::uint32_t>(
+                                std::min<std::uint64_t>(rt.abEnd/48,720000));
+                        }
                         if(loaded.audioName!=selectedSongFile)
                             throw std::runtime_error("Session filename must match selected original instrumental");
                         safeStop();
@@ -735,7 +781,7 @@ int main(int argc,char** argv) {
                         rt.seekRequest.store(std::min<std::uint64_t>(loaded.startMs*48ULL,rt.mixer.songFrames()));
                         displayTitle=roomtone::desktop::wide(loaded.title);
                         safeRestart();
-                        notice=L"Matching local session imported. Voice MUTED; music PAUSED.";
+                        notice=L"Local timed lyrics imported. Voice MUTED; music PAUSED. Use Browse lyrics (Ctrl+L).";
                         break;
                     }
                     case Action::ChooseDevices:{

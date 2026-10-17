@@ -30,7 +30,7 @@ int main(){
       "in-file offset updates match source browser semantics");
  for(const auto& x:{"[00:60.1]Bad\n","[00:01.]Bad\n","[00:01.ab]Bad\n",
                     "[13:00.001]Beyond\n","[00:01.2]Hi\n[00:03]Bad\tTab\n",
-                    "[00:03]","[offset:90000]\n[00:01]X\n"})
+                    "[ti:Metadata only]","[offset:90000]\n[00:01]X\n"})
   need(rejects(x),"invalid LRC rejected");
  need(rejects(std::string("[00:01]X\n")+std::string(1048576,'x')),"oversized input");
  need(rejects("[00:01]"+std::string(2001,'a')),"long lyric rejected");
