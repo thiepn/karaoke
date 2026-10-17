@@ -240,7 +240,7 @@ struct Window {
     if(practiceMenu)DestroyMenu(practiceMenu);
     if(songMenu)DestroyMenu(songMenu);
     if(effectsMenu)DestroyMenu(effectsMenu);
-    if(recoveryMenu)DestroyMenu(recoveryMenu;
+    if(recoveryMenu)DestroyMenu(recoveryMenu);
     if(menubar)DestroyMenu(menubar);
    }
     self->title=self->label(L"ROOMTONE",SS_LEFT,self->heading);
