@@ -77,8 +77,16 @@ int main(){
   need(!owned.verifiedPractice(0,*replaced),"stale practice cannot attach to replacement");
   need(owned.practice(0).has_value(),"owner cache untouched until explicit queue reset");
   need(owned.commitVerified(0,*replaced),"new decoded source can be explicitly bound");
-  need(owned.verifiedPractice(0,*replaced).has_value(),
-       "explicit post-decode source version is respected");
+  need(!owned.verifiedPractice(0,*replaced),
+       "new source version permanently invalidates stale original practice");
+  roomtone::song_queue::Practice updated;
+  updated.hasSession=true;updated.session.audioName=fixture.filename().u8string();
+  updated.session.lines={{2300,"New source lyric"}};updated.frames=96000;
+  need(owned.rememberCurrent(updated),"store independently reviewed new source practice");
+  need(owned.verifiedPractice(0,*replaced)->frames==96000,
+       "new source practice available on later revisits");
+  need(owned.commitVerified(0,*replaced)&&owned.verifiedPractice(0,*replaced)->frames==96000,
+       "unchanged source version preserves correct new snapshot on further revisit");
  }catch(...){std::filesystem::remove(fixture);throw;}
  std::filesystem::remove(fixture);
  std::cout<<"PASS source-owned volatile native queue, owner transitions, bounds, duplicate rejection, no file writes.\n";

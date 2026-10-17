@@ -97,8 +97,15 @@ public:
   current_=index;return true;
  }
  bool commitVerified(std::size_t index,const FileVersion& version)noexcept{
-  if(!commit(index))return false;
-  items_[index].loadedVersion=version;
+  if(!canSelect(index))return false;
+  auto& entry=items_[index];
+  // A new successful decode must revoke earlier cached lyrics/practice
+  // atomically with the version rebind. Otherwise the old snapshot could
+  // reappear on a SECOND revisit after a changed-file detection.
+  if(!entry.loadedVersion||!entry.loadedVersion->same(version))
+   entry.saved.reset();
+  entry.loadedVersion=version;
+  current_=index;
   return true;
  }
  // Explicit queue-management only; don't implicitly switch PCM when deleting.
