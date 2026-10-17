@@ -10,6 +10,7 @@
 #include "practice.hpp"
 #include "session_export.hpp"
 #include "session_io_win.hpp"
+#include "song_queue.hpp"
 #include "desktop_ui.hpp"
 #include "device_recovery.hpp"
 #include <algorithm>
@@ -458,6 +459,11 @@ int main(int argc,char** argv) {
         std::string selectedSongFile=chosenSong.empty()
              ?std::filesystem::u8path(opt.song).filename().u8string()
              :std::filesystem::path(chosenSong).filename().u8string();
+        roomtone::song_queue::Queue songQueue;
+        if(!selectedSongFile.empty())
+            songQueue.reset(chosenSong.empty()
+                ?std::filesystem::u8path(opt.song)
+                :std::filesystem::path(chosenSong));
         std::wstring displayTitle=hasHandoff?roomtone::desktop::wide(imported.title)
              :roomtone::desktop::wide(selectedSongFile);
         Runtime rt(opt,std::move(song));
@@ -580,6 +586,43 @@ int main(int argc,char** argv) {
                     ?L"Audio unavailable. Voice and music remain muted."
                     :lastDeviceIssue+L" Voice and music remain muted.";
             };
+            const auto activateSong=[&](const std::filesystem::path& selected,
+                                           std::vector<float> decoded){
+                if(decoded.empty())throw std::runtime_error("No decoded song frames");
+                const bool previouslyReady=deviceActive&&!rt.interrupted.load();
+                safeStop(); // join the ONE original callback before replacing PCM
+                rt.seekRequest.store(roomtone::recovery::NoSeek);
+                rt.rewindRequest.store(false);
+                rt.mixer.replaceSong(std::move(decoded));
+                rt.songPosition.store(0);
+                rt.session=roomtone::Handoff{};hasHandoff=false;
+                rt.abLoop.store(false);rt.abStart.store(0);rt.abEnd.store(0);
+                rt.practiceStartMarked=false;rt.repeat.store(false);importedLyricOffset=0;
+                selectedSongFile=selected.filename().u8string();
+                displayTitle=roomtone::desktop::wide(selectedSongFile);
+                rt.monitoring.store(false);rt.musicPlaying.store(false);
+                if(previouslyReady){
+                    safeRestart();
+                    if(!deviceActive)return; // keep real actionable WASAPI error
+                    notice=L"Original song changed. Previous lyrics and A-B cleared. Music PAUSED and voice MUTED.";
+                }else{
+                    notice=L"Song loaded offline. Reconnect explicitly; microphone and music remain muted.";
+                }
+            };
+            const auto activateQueueIndex=[&](std::size_t index){
+                if(!songQueue.canSelect(index))throw std::invalid_argument("Queued song index outside owner list");
+                if(index==songQueue.currentIndex()){
+                    notice=L"Already on selected queued song; no playback state changed.";return;
+                }
+                // Mute immediately before potentially blocking local decode;
+                // failed decode leaves current PCM, owner index, lyrics intact.
+                rt.monitoring.store(false);rt.musicPlaying.store(false);
+                const auto& localPath=songQueue.at(index);
+                auto next=loadSong("",localPath.wstring());
+                if(next.empty())throw std::runtime_error("Queued song could not decode");
+                activateSong(localPath,std::move(next));
+                songQueue.commit(index);
+            };
             roomtone::desktop::Window window;
             window.controller.deviceChanged=[&]{deviceTopologyDirty=true;};
             window.controller.maintenance=[&]{
@@ -631,6 +674,7 @@ int main(int argc,char** argv) {
                 view.loopEnabled=view.loopMarked&&view.repeat;
                 view.loopA=rt.abStart.load();view.loopB=rt.abEnd.load();
                 view.lyricOffsetMs=rt.session.offsetMs;
+                view.queueIndex=songQueue.currentIndex();view.queueTotal=songQueue.size();
                 view.deviceActive=deviceActive;view.hasSong=rt.mixer.hasSong();
                 view.hasLyrics=hasHandoff&&!rt.session.lines.empty();
                 view.reverb=rt.wet.load();view.echo=rt.echo.load();view.music=rt.musicGain.load();view.gain=rt.gain.load();
@@ -859,20 +903,56 @@ int main(int argc,char** argv) {
                         rt.monitoring.store(false);rt.musicPlaying.store(false);
                         const auto chosen=chooseSongFile();
                         if(chosen.empty()){notice=L"Song selection canceled; microphone and music muted.";break;}
+                        const std::filesystem::path path(chosen);
                         auto next=loadSong("",chosen);
-                        if(next.empty())throw std::runtime_error("No decoded song frames");
-                        safeStop();
-                        rt.seekRequest.store(std::numeric_limits<std::uint64_t>::max());
-                        rt.rewindRequest.store(false);
-                        rt.mixer.replaceSong(std::move(next));
-                        rt.songPosition.store(0);
-                        rt.session=roomtone::Handoff{};hasHandoff=false;
-                        rt.abLoop.store(false);rt.abStart.store(0);rt.abEnd.store(0);
-                        rt.practiceStartMarked=false;importedLyricOffset=0;rt.repeat.store(false);
-                        selectedSongFile=std::filesystem::path(chosen).filename().u8string();
-                        displayTitle=roomtone::desktop::wide(selectedSongFile);
-                        safeRestart();
-                        notice=L"Song replaced; previous source-owned lyrics cleared. Import matching .rtk.";
+                        activateSong(path,std::move(next));
+                        songQueue.reset(path); // explicit new listening context
+                        notice+=L" Queue reset to this original song.";
+                        break;
+                    }
+                    case Action::AddQueueSong:{
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        const auto chosen=chooseSongFile();
+                        if(chosen.empty()){notice=L"Queue addition canceled; voice and music muted.";break;}
+                        const std::filesystem::path path(chosen);
+                        if(songQueue.size()==0){
+                            auto next=loadSong("",chosen);
+                            activateSong(path,std::move(next));
+                            songQueue.reset(path);
+                            notice=L"First queued song loaded; voice MUTED and music PAUSED.";
+                        }else if(songQueue.add(path)){
+                            notice=L"Local song added to volatile queue. Select it manually; no automatic playback.";
+                        }else notice=L"Queue entry refused: same local file, missing filename or 24-song limit.";
+                        break;
+                    }
+                    case Action::NextQueueSong:case Action::PreviousQueueSong:{
+                        const auto candidate=action==Action::NextQueueSong
+                          ?songQueue.next():songQueue.previous();
+                        if(!candidate){
+                            notice=L"No next/previous queued song. Add another local file first.";break;
+                        }
+                        activateQueueIndex(*candidate);
+                        break;
+                    }
+                    case Action::ShowQueue:{
+                        if(songQueue.size()==0){notice=L"Queue empty. Add a local song first.";break;}
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        std::vector<std::wstring> labels;
+                        labels.reserve(songQueue.size());
+                        for(std::size_t i=0;i<songQueue.size();++i){
+                            labels.push_back(std::to_wstring(i+1)+L".  "+
+                                roomtone::desktop::wide(songQueue.at(i).filename().u8string())+
+                                (i==songQueue.currentIndex()?L"  [CURRENT]":L""));
+                        }
+                        const auto chosen=roomtone::desktop::selectQueuedSong(
+                            labels,songQueue.currentIndex(),window.hwnd,
+                            [&]{rt.monitoring.store(false);
+                                notice=L"VOICE MUTED (F8) while choosing queued song.";});
+                        if(!chosen){
+                            notice=L"Queue selection canceled. Existing song and progress retained; voice/music muted.";
+                            break;
+                        }
+                        activateQueueIndex(*chosen);
                         break;
                     }
                     case Action::ChooseSession:{
