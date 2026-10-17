@@ -33,7 +33,8 @@ enum Action {
  Play=101,Mic,Back,Forward,Restart,Repeat,NextLine,
  ReverbDown,ReverbUp,EchoDown,EchoUp,MusicDown,MusicUp,
  ChooseSong,ChooseSession,ChooseDevices,Reconnect,EmergencyMute,GainDown,GainUp,
-  PreviousLine,BrowseLyrics,MarkLoopA,MarkLoopB,ClearAB,ToggleAB,OffsetEarlier,OffsetLater,OffsetReset,SaveSession,AddQueueSong,ShowQueue,NextQueueSong,PreviousQueueSong
+  PreviousLine,BrowseLyrics,MarkLoopA,MarkLoopB,ClearAB,ToggleAB,OffsetEarlier,OffsetLater,OffsetReset,SaveSession,AddQueueSong,ShowQueue,NextQueueSong,PreviousQueueSong,
+  RemoveQueuedSong,MoveQueuedUp,MoveQueuedDown,ClearPendingQueue
 };
 struct Snapshot {
  std::wstring title,previous,current,next,input,output,notice;
@@ -207,6 +208,11 @@ struct Window {
      AppendMenuW(songMenu,MF_STRING,ShowQueue,L"Browse owner song queue\tCtrl+Q");
      AppendMenuW(songMenu,MF_STRING,NextQueueSong,L"Next queued song\tCtrl+N");
      AppendMenuW(songMenu,MF_STRING,PreviousQueueSong,L"Previous queued song\tCtrl+P");
+     AppendMenuW(songMenu,MF_SEPARATOR,0,nullptr);
+     AppendMenuW(songMenu,MF_STRING,MoveQueuedUp,L"Move queued entry up");
+     AppendMenuW(songMenu,MF_STRING,MoveQueuedDown,L"Move queued entry down");
+     AppendMenuW(songMenu,MF_STRING,RemoveQueuedSong,L"Remove inactive queued entry");
+     AppendMenuW(songMenu,MF_STRING,ClearPendingQueue,L"Clear pending songs (keep current)");
      AppendMenuW(menubar,MF_POPUP,reinterpret_cast<UINT_PTR>(songMenu),L"&Songs");
     }
     SetMenu(h,menubar);
@@ -255,6 +261,10 @@ struct Window {
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::ShowQueue,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::NextQueueSong,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::PreviousQueueSong,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::MoveQueuedUp,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::MoveQueuedDown,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::RemoveQueuedSong,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::ClearPendingQueue,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::Play,BN_CLICKED),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::EmergencyMute,BN_CLICKED),0);
         PostMessageW(h,WM_CLOSE,0,0);
@@ -297,7 +307,7 @@ struct Window {
     else if(w==VK_F10)self->notify(Play);
     return 0;
    case WM_COMMAND:
-    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=134)
+    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=138)
      self->notify(static_cast<Action>(LOWORD(w)));
     return 0;
    case WM_CLOSE:
