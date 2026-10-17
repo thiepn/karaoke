@@ -624,7 +624,7 @@ int main(int argc,char** argv) {
                 if(resume&&resume->hasSession&&
                    resume->session.audioName!=selected.filename().u8string())
                     throw std::runtime_error("Queued practice belongs to a different audio filename");
-                const bool previouslyReady=deviceActive&&!rt.interrupted.load();
+                const bool previouslyReady=deviceActive&&!rt.interrupted.load()&&!ownerSuspended;
                 safeStop(); // join the ONE original callback before replacing PCM
                 if(songQueue.size()&&!songQueue.rememberCurrent(capturePractice()))
                     throw std::runtime_error("Queued source identity changed; previous owner state retained");
@@ -669,7 +669,9 @@ int main(int argc,char** argv) {
                        ?L"Queued song and its OWN practice restored. Voice MUTED, music PAUSED."
                        :L"New song loaded. Previous source lyrics cleared; voice MUTED, music PAUSED.";
                 }else{
-                    notice=L"Song selected offline. Reconnect explicitly; voice/music remain muted.";
+                    notice=ownerSuspended
+                      ?L"Song selected while OWNER SUSPENDED. Original duplex stays released; reconnect explicitly."
+                      :L"Song selected offline. Reconnect explicitly; voice/music remain muted.";
                 }
             };
             const auto activateQueueIndex=[&](std::size_t index){
