@@ -42,3 +42,10 @@ No QuadCast/Pebble latency or acoustic feedback measurements are claimed. Real d
 5. Run a measured microphone-to-headphones loopback check, then only after safe wired-headphone acceptance test Pebble at low output; log method, driver and endpoint IDs without committing private machine identifiers.
 
 Physical QuadCast/Pebble behavior, genuine endpoint re-enumeration, acoustic feedback and measured latency remain NOT TESTED. No native release authorization.
+
+## Software-only A3/A4 direct .lrc workflow (automated source coverage; hardware NOT TESTED)
+
+- Export a .lrc file from existing browser Lyrics Studio, select a local instrumental in the native Windows UI, and import the .lrc directly; verify live current/next lyric timestamps, selection, centisecond precision, Unicode and offset behavior.
+- Import another .lrc while offline and while song is paused; ensure original song/position/A–B loop remain and mic/music never auto-enable. A canceled/invalid import must keep the former lyric session.
+- Reopen the original .rtk and verify exact original-audio filename checking, A–B loop restoration and browser-handoff transport semantics are unchanged.
+- These are native Windows owner workflows not physically qualified by Chromium or synthetic Win32 CI. A4 hardware acceptance remains NO GO.

@@ -47,3 +47,21 @@ with tempfile.TemporaryDirectory() as td:
    capture_output=True,text=True,timeout=20)
  assert bad.returncode!=0,"Invalid handoff erroneously accepted"
 print("PASS Windows native WAV decoder, offline .rtk handoff validation, rejection of invalid data. Physical audio NOT TESTED.")
+
+# Browser-editor-compatible .lrc import is strictly local and probe-safe.
+with tempfile.TemporaryDirectory() as td:
+ lrc=Path(td)/"demo.lrc"
+ lrc.write_text("[ti:Local practice]\\n[offset:-200]\\n[00:01.50]First line\\n[00:02][00:04]Chorus\\n".replace("\\n","\n"),encoding="utf-8")
+ ok=subprocess.run([str(exe),"--probe-lrc","--lrc",str(lrc)],
+   capture_output=True,text=True,timeout=20)
+ assert ok.returncode==0,(ok.returncode,ok.stdout,ok.stderr)
+ assert "OFFLINE_LRC_OK lyrics=3" in ok.stdout,ok.stdout
+ for invalid in (b"[00:99]bad\n",b"[00:01]\xc0\xaf\n",b"[ti:untimed]\n"):
+  lrc.write_bytes(invalid)
+  failed=subprocess.run([str(exe),"--probe-lrc","--lrc",str(lrc)],
+    capture_output=True,text=True,timeout=20)
+  assert failed.returncode!=0,"Invalid LRC accepted"
+ guarded=subprocess.run([str(exe),"--probe-lrc","--lrc",str(lrc),"--pick-handoff"],
+   capture_output=True,text=True,timeout=20)
+ assert guarded.returncode!=0,"Offline LRC probe accepted interactive picker"
+print("PASS Windows offline native LRC integration; no WASAPI opened.")

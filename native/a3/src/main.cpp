@@ -307,14 +307,14 @@ int main(int argc,char** argv) {
                 ?std::filesystem::u8path(opt.song).filename().u8string()
                 :std::filesystem::path(chosenSong).filename().u8string();
         };
-        const localLyrics=[&](const std::filesystem::path& file)->roomtone::Handoff{
+        const localLyrics=[&](const std::filesystem::path& file,
+                                   const std::string& currentAudioName)->roomtone::Handoff{
             std::string extension=file.extension().u8string();
             std::transform(extension.begin(),extension.end(),extension.begin(),
                            [](unsigned char c){return static_cast<char>(std::tolower(c));});
             if(extension==".lrc"){
-                const auto filename=originalFileName();
-                if(filename.empty())throw std::invalid_argument("Choose original local song before importing LRC");
-                return roomtone::loadLrc(file,filename,filename);
+                if(currentAudioName.empty())throw std::invalid_argument("Choose original local song before importing LRC");
+                return roomtone::loadLrc(file,currentAudioName,currentAudioName);
             }
             if(extension==".rtk")return roomtone::loadHandoff(file);
             throw std::invalid_argument("Native lyrics must be .rtk or .lrc");
@@ -323,7 +323,7 @@ int main(int argc,char** argv) {
             imported=roomtone::loadHandoff(opt.handoffFile);hasHandoff=true;
         }
         if(!opt.lrcFile.empty()&&!opt.list&&!opt.probeSong){
-            imported=localLyrics(std::filesystem::u8path(opt.lrcFile));hasHandoff=true;
+            imported=localLyrics(std::filesystem::u8path(opt.lrcFile),originalFileName());hasHandoff=true;
         }
         if(!opt.list&&!opt.probeSong&&(opt.pickHandoff||(opt.guided&&!hasHandoff))){
             bool choose=opt.pickHandoff;
@@ -342,7 +342,7 @@ int main(int argc,char** argv) {
             if(choose){
                 const auto selected=chooseHandoffFile();
                 if(!selected.empty()){
-                    imported=localLyrics(std::filesystem::path(selected));
+                    imported=localLyrics(std::filesystem::path(selected),originalFileName());
                     hasHandoff=true;
                 }
             }
@@ -758,9 +758,11 @@ int main(int argc,char** argv) {
                         rt.monitoring.store(false);rt.musicPlaying.store(false);
                         const auto path=chooseHandoffFile();
                         if(path.empty()){notice=L"Session selection canceled; microphone and music muted.";break;}
-                        auto loaded=localLyrics(std::filesystem::path(path));
-                        const bool directLrc=std::filesystem::path(path).extension()==L".lrc"||
-                            std::filesystem::path(path).extension()==L".LRC";
+                        auto loaded=localLyrics(std::filesystem::path(path),selectedSongFile);
+                        auto extension=std::filesystem::path(path).extension().u8string();
+                        std::transform(extension.begin(),extension.end(),extension.begin(),
+                            [](unsigned char c){return static_cast<char>(std::tolower(c));});
+                        const bool directLrc=extension==".lrc";
                         if(directLrc){
                             // Lyrics-only import retains position and A-B loop.
                             loaded.startMs=static_cast<std::uint32_t>(
