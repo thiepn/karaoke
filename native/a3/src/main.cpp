@@ -14,6 +14,7 @@
 #include "desktop_ui.hpp"
 #include "device_recovery.hpp"
 #include "effect_controls.hpp"
+#include "signal_diagnostics.hpp"
 #include "lyric_sections.hpp"
 #include <algorithm>
 #include <cstdint>
@@ -233,6 +234,7 @@ struct Runtime {
         : mixer(std::move(song),o.wet,o.gain),wet(o.wet),gain(o.gain),
           echo(o.echo),feedback(o.feedback),echoMs(o.echoMs),musicGain(o.musicGain){}
     roomtone::KaraokeMix mixer;
+    roomtone::signal_diagnostics::Levels signals;
     std::atomic<bool> monitoring{false},musicPlaying{false},rewindRequest{false},repeat{false},interrupted{false};
     std::atomic<std::uint64_t> seekRequest{std::numeric_limits<std::uint64_t>::max()};
     std::atomic<float> wet,gain,echo,feedback,musicGain;
@@ -266,6 +268,7 @@ static void callback(ma_device* device, void* output, const void* input, ma_uint
     // A rerouted/stopped driver must emit silence even if it delivers a final
     // callback before the UI owner drains/uninitializes the old device.
     if(rt->interrupted.load(std::memory_order_relaxed)){
+        rt->signals.clear();
         std::fill_n(out,static_cast<std::size_t>(frames)*2,0.0f);
         return;
     }
@@ -279,7 +282,9 @@ static void callback(ma_device* device, void* output, const void* input, ma_uint
     const bool monitor=in&&rt->monitoring.load(std::memory_order_relaxed);
     const bool play=rt->musicPlaying.load(std::memory_order_relaxed);
     const float level=rt->musicGain.load(std::memory_order_relaxed);
+    float capturePeak=0,outputPeak=0;
     for(ma_uint32 i=0;i<frames;++i) {
+        if(in)capturePeak=std::max(capturePeak,roomtone::signal_diagnostics::sample(in[i]));
         if(play&&rt->repeat.load(std::memory_order_relaxed)){
             if(rt->abLoop.load(std::memory_order_relaxed)&&
                rt->mixer.position()>=rt->abEnd.load(std::memory_order_relaxed))
@@ -288,7 +293,11 @@ static void callback(ma_device* device, void* output, const void* input, ma_uint
         }
         const auto result=rt->mixer.render(in?in[i]:0.0f,monitor,play,level);
         out[i*2]=result.left;out[i*2+1]=result.right;
+        outputPeak=std::max(outputPeak,std::max(
+          roomtone::signal_diagnostics::sample(result.left),
+          roomtone::signal_diagnostics::sample(result.right)));
     }
+    rt->signals.publish(capturePeak,outputPeak);
     rt->songPosition.store(rt->mixer.position(),std::memory_order_relaxed);
     if(rt->mixer.songEnded()&&!rt->repeat.load(std::memory_order_relaxed)&&!rt->rewindRequest.load(std::memory_order_relaxed))
         rt->musicPlaying.store(false,std::memory_order_relaxed);
@@ -492,6 +501,7 @@ int main(int argc,char** argv) {
             lastDeviceIssue.clear();
             // Device output always starts in an explicitly muted state.
             rt.monitoring.store(false);rt.musicPlaying.store(false);
+            rt.signals.clear();
             ma_device_info *newOutputs=nullptr,*newInputs=nullptr;
             ma_uint32 newOutCount=0,newInCount=0;
             if(ma_context_get_devices(&context,&newOutputs,&newOutCount,&newInputs,&newInCount)!=MA_SUCCESS){
@@ -577,6 +587,7 @@ int main(int argc,char** argv) {
             auto safeStop=[&](){
                 rt.monitoring.store(false);rt.musicPlaying.store(false);
                 if(deviceActive){ma_device_uninit(&device);deviceActive=false;}
+                rt.signals.clear(); // stale level values cannot suggest live devices
                 // Callback has stopped. Freeze the latest owner-requested transport
                 // (including an unconsumed seek/restart), not stale UI position.
                 roomtone::recovery::freeze(
@@ -1136,6 +1147,38 @@ int main(int argc,char** argv) {
                             L"Monitoring and music were paused before this modal dialog.";
                         MessageBoxW(window.hwnd,report.c_str(),L"ROOMTONE | Original DSP parameters",MB_OK|MB_ICONINFORMATION);
                         notice=L"Effects inspected. Voice MUTED, music PAUSED. No settings changed.";
+                        break;
+                    }
+                    case Action::ShowSignals:{
+                        // A read-only, owner-local troubleshooting panel. The
+                        // microphone is muted before opening the modal; capture
+                        // PEAKS are observed from the SAME original callback
+                        // without forwarding, recording or storing voice audio.
+                        rt.monitoring.store(false);
+                        roomtone::desktop::SignalInspector inspector;
+                        inspector.owner=window.hwnd;
+                        inspector.readout=[&]()->std::wstring{
+                            const bool available=deviceActive&&!rt.interrupted.load()&&!ownerSuspended;
+                            const auto caption=available?L"DEVICE READY":ownerSuspended
+                                ?L"OWNER SUSPENDED":rt.interrupted.load()?L"INTERRUPTED":L"OFFLINE";
+                            const int mic=available?roomtone::signal_diagnostics::percentage(rt.signals.capture()):0;
+                            const int out=available?roomtone::signal_diagnostics::percentage(rt.signals.output()):0;
+                            std::wstring body=std::wstring(L"WASAPI signal state: ")+caption+
+                               L"\nInput capture PEAK: "+std::to_wstring(mic)+L"% of digital full scale"+
+                               L"\nDuplex output PEAK: "+std::to_wstring(out)+L"% of digital full scale"+
+                               L"\nMic monitor: "+(rt.monitoring.load()?L"ON":L"MUTED")+
+                               L" | Music: "+(rt.musicPlaying.load()?L"PLAYING":L"PAUSED");
+                            if(available&&roomtone::signal_diagnostics::inputNearClipping(rt.signals.capture()))
+                                body+=L"\nWARNING: Capture samples near digital clipping.";
+                            if(available&&roomtone::signal_diagnostics::outputAtLimiter(rt.signals.output()))
+                                body+=L"\nWARNING: Original output limiter active.";
+                            if(!available)body+=L"\nSignal values are ZERO because driver is not available.";
+                            return body;
+                        };
+                        inspector.emergencyMute=[&]{rt.monitoring.store(false);};
+                        inspector.suspendDuplex=[&]{window.controller.action(Action::SuspendAudio);};
+                        inspector.run();
+                        notice=L"Signal check closed. Voice monitoring remains MUTED; no measurements recorded.";
                         break;
                     }
                     case Action::ShowRecovery:{
