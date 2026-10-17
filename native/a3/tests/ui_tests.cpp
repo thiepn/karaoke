@@ -155,7 +155,7 @@ int main(){
    if(!choice||*choice!=1)throw std::runtime_error("Native authored section picker accepted wrong cue");
   }
   const int result=window.run();
-  if(result!=0||snapshots==0||playEvents!=1||muteEvents!=1||previousEvents!=1||browseEvents!=1||loopEvents!=1||offsetEvents!=1||saveEvents!=1||queueActionEvents!=4||manageQueueEvents!=4||effectsEvents!=7||recoveryEvents!=1||sectionEvents!=3||suspendEvents!=1||focusSnapshots<1||!focusLayoutSafe||!focusSafetyVisible||!compactFocusResized||
+  if(result!=0||snapshots==0||playEvents!=1||muteEvents!=1||previousEvents!=1||browseEvents!=1||loopEvents!=1||offsetEvents!=1||saveEvents!=1||queueActionEvents!=4||manageQueueEvents!=4||effectsEvents!=7||recoveryEvents!=1||sectionEvents!=3||suspendEvents!=2||focusSnapshots<1||!focusLayoutSafe||!focusSafetyVisible||!compactFocusResized||
       !window.focusedLyrics||window.lyricScale!=0||deviceModalMuteEvents!=1||queueModalMuteEvents!=1||modalMuteEvents!=1||!compactLayout||topologyEvents<1||tickEvents==0||seekEvents!=1||lastSeek!=43)
    throw std::runtime_error("in-process control/seek message, modal lifetime and focus");
   if(roomtone::desktop::wide("Nacht \xC3\xBC""ber")!=L"Nacht \xFC""ber")

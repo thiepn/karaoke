@@ -356,6 +356,7 @@ struct Window {
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::IncreaseLyricText,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::DecreaseLyricText,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::SuspendAudio,0),0);
+        PostMessageW(self->seekBar,WM_KEYDOWN,VK_F7,0); // focus-local keyboard stop
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::Play,BN_CLICKED),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::EmergencyMute,BN_CLICKED),0);
         PostMessageW(h,WM_CLOSE,0,0);
