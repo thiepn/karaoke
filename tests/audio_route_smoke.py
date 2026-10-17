@@ -32,7 +32,10 @@ try:
    })()""")
    page.goto(url)
    page.evaluate("() => startMic()")
-   page.wait_for_function("() => engine?.route === 'default-direct'")
+   # The route string can settle BEFORE async output gain gates switch.
+   # Wait for original source-owned routing AND gain policy together;
+   # otherwise a fast runner samples a transient state as an A1 failure.
+   page.wait_for_function("() => engine?.route === 'default-direct' && engine.direct && engine.directGate.gain.value > .99 && engine.compatGate.gain.value < .01")
    result=page.evaluate("""() => ({
     route:engine.route, direct:engine.direct, fallback:ui.voicePlayback.paused,
     record:engine.recordDest===nodes.recordDest, monitor:speakerOn,
