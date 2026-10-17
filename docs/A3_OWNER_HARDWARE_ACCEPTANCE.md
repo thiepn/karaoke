@@ -64,3 +64,7 @@ Physical QuadCast/Pebble behavior, genuine endpoint re-enumeration, acoustic fee
 3. Quit and re-open with the original song and the saved .rtk; confirm the source-owned lyrics, practice offset, A–B loop and saved position. A plain whole-song repeat is deliberately not exported as an A–B loop.
 4. Cancel the native Save dialog, select an existing destination, or unplug the output while exporting: ensure no overwrite, no silent fallback, no automatic mic/music activation, and previous session remains usable. Repeat from an already offline state; it must not attempt to reconnect automatically.
 5. Validate 1366x768, high DPI, Ctrl+S and NVDA/Narrator accessibility separately. CI tests only synthetic Win32 actions and portable format; no physical hardware/latency claims.
+
+### Native session export and confirmation follow-up (manual, NOT TESTED)
+
+Inspect the native import confirmation summary (original filename, title, lyric count, offset and .rtk resume vs .lrc retention). Decline and verify previous source lyrics/position remain intact and both audio paths stay muted. Save using Ctrl+S with an invalid extension; it must be rejected, never save audio bytes. Select an already-existing .rtk name; Windows CREATE_NEW must refuse overwriting it. A valid new .rtk must reopen with the correct original song and preserve any barely-over-250 ms A–B loop after millisecond quantization. Portable and synthetic Windows tests do not replace human UI acceptance.

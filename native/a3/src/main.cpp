@@ -193,7 +193,14 @@ static std::wstring chooseSessionSaveFile() {
  d.lpstrFilter=L"ROOMTONE practice sessions (*.rtk)\0*.rtk\0";
  d.lpstrDefExt=L"rtk";
  d.Flags=OFN_EXPLORER|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
- if(GetSaveFileNameW(&d))return filename;
+ if(GetSaveFileNameW(&d)){
+  std::wstring extension=std::filesystem::path(filename).extension().wstring();
+  std::transform(extension.begin(),extension.end(),extension.begin(),[](wchar_t c){
+   return c>=L'A'&&c<=L'Z'?static_cast<wchar_t>(c-L'A'+L'a'):c;
+  });
+  if(extension!=L".rtk")throw std::invalid_argument("Practice export must use .rtk filename");
+  return filename;
+ }
  const DWORD error=CommDlgExtendedError();
  if(error)throw std::runtime_error("Native save dialog failed (error "+std::to_string(error)+")");
  return {};
