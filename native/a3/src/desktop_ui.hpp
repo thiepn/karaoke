@@ -33,7 +33,7 @@ enum Action {
  Play=101,Mic,Back,Forward,Restart,Repeat,NextLine,
  ReverbDown,ReverbUp,EchoDown,EchoUp,MusicDown,MusicUp,
  ChooseSong,ChooseSession,ChooseDevices,Reconnect,EmergencyMute,GainDown,GainUp,
-  PreviousLine,BrowseLyrics,MarkLoopA,MarkLoopB,ClearAB,ToggleAB,OffsetEarlier,OffsetLater,OffsetReset,SaveSession
+  PreviousLine,BrowseLyrics,MarkLoopA,MarkLoopB,ClearAB,ToggleAB,OffsetEarlier,OffsetLater,OffsetReset,SaveSession,AddQueueSong,ShowQueue,NextQueueSong,PreviousQueueSong
 };
 struct Snapshot {
  std::wstring title,previous,current,next,input,output,notice;
@@ -41,6 +41,7 @@ struct Snapshot {
  int lyricOffsetMs=0;
  bool loopMarked=false,loopEnabled=false;
  unsigned positionSeconds=0,durationSeconds=0;
+ std::size_t queueIndex=0,queueTotal=0;
  float reverb=0,echo=0,music=0,gain=0;
  bool playing=false,microphone=false,repeat=false,interrupted=false,deviceActive=false,hasSong=false,hasLyrics=false;
 };
@@ -147,7 +148,8 @@ struct Window {
   auto state=s.interrupted?L"INTERRUPTED":s.deviceActive?L"READY":L"DEVICE STOPPED";
   setText(status,clock(s.positionSeconds)+L" / "+clock(s.durationSeconds)
       +L"  |  "+state+L"  |  Voice "+(s.microphone?L"ON":L"MUTED")
-      +L"  |  Music "+(s.playing?L"PLAYING":L"PAUSED"));
+      +L"  |  Music "+(s.playing?L"PLAYING":L"PAUSED")+
+       (s.queueTotal?L"  |  Song "+std::to_wstring(s.queueIndex+1)+L"/"+std::to_wstring(s.queueTotal):L""));
   setText(buttons[0],s.playing?L"Pause music":L"Play music");
   setText(buttons[1],s.microphone?L"MUTE VOICE (F9)":L"Enable voice (F9)");
   setText(buttons[5],s.repeat?L"Repeat ON":L"Repeat OFF");
@@ -186,7 +188,7 @@ struct Window {
    case WM_CREATE:{
     self->minorFont=font(17);self->regular=font(17);self->large=font(30,true);
     self->heading=font(25,true);
-   HMENU menubar=CreateMenu(),practiceMenu=CreatePopupMenu();
+   HMENU menubar=CreateMenu(),practiceMenu=CreatePopupMenu(),songMenu=CreatePopupMenu();
    if(menubar&&practiceMenu){
     const struct Entry {Action action;const wchar_t* title;} entries[]={
      {MarkLoopA,L"Mark loop start A\tCtrl+1"},
@@ -200,9 +202,17 @@ struct Window {
     for(const auto& entry:entries)AppendMenuW(practiceMenu,MF_STRING,
        static_cast<UINT_PTR>(entry.action),entry.title);
     AppendMenuW(menubar,MF_POPUP,reinterpret_cast<UINT_PTR>(practiceMenu),L"&Practice");
+    if(songMenu){
+     AppendMenuW(songMenu,MF_STRING,AddQueueSong,L"Add local song to queue\tCtrl+A");
+     AppendMenuW(songMenu,MF_STRING,ShowQueue,L"Browse owner song queue\tCtrl+Q");
+     AppendMenuW(songMenu,MF_STRING,NextQueueSong,L"Next queued song\tCtrl+N");
+     AppendMenuW(songMenu,MF_STRING,PreviousQueueSong,L"Previous queued song\tCtrl+P");
+     AppendMenuW(menubar,MF_POPUP,reinterpret_cast<UINT_PTR>(songMenu),L"&Songs");
+    }
     SetMenu(h,menubar);
    }else{
     if(practiceMenu)DestroyMenu(practiceMenu);
+    if(songMenu)DestroyMenu(songMenu);
     if(menubar)DestroyMenu(menubar);
    }
     self->title=self->label(L"ROOMTONE",SS_LEFT,self->heading);
@@ -241,6 +251,10 @@ struct Window {
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::MarkLoopA,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::OffsetLater,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::SaveSession,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::AddQueueSong,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::ShowQueue,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::NextQueueSong,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::PreviousQueueSong,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::Play,BN_CLICKED),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::EmergencyMute,BN_CLICKED),0);
         PostMessageW(h,WM_CLOSE,0,0);
@@ -283,7 +297,7 @@ struct Window {
     else if(w==VK_F10)self->notify(Play);
     return 0;
    case WM_COMMAND:
-    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=130)
+    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=134)
      self->notify(static_cast<Action>(LOWORD(w)));
     return 0;
    case WM_CLOSE:
@@ -332,6 +346,10 @@ struct Window {
        case '4':shortcut=ToggleAB;break;
        case '0':shortcut=OffsetReset;break;
        case 'S':shortcut=SaveSession;break;
+        case 'A':shortcut=AddQueueSong;break;
+        case 'Q':shortcut=ShowQueue;break;
+        case 'N':shortcut=NextQueueSong;break;
+        case 'P':shortcut=PreviousQueueSong;break;
        case VK_OEM_4:shortcut=OffsetEarlier;break;
        case VK_OEM_6:shortcut=OffsetLater;break;
        default:recognized=false;break;
@@ -448,6 +466,9 @@ struct LyricChooser {
  HFONT text=nullptr;
  const std::vector<std::wstring>* rows=nullptr;
  std::size_t current=0;
+ std::wstring dialogTitle=L"ROOMTONE | Timed lyrics";
+ std::wstring hintText=L"Choose a timed line. Arrow keys move; Enter jumps. Escape cancels.";
+ std::wstring confirmText=L"Jump to line";
  std::optional<std::size_t> chosen;
  std::function<void()> emergencyMute; // focused modal only, never system-wide
  bool syntheticCancel=false,syntheticMute=false;
@@ -461,7 +482,7 @@ struct LyricChooser {
   switch(msg){
    case WM_CREATE:{
     self->text=font(18);
-    HWND hint=CreateWindowW(L"STATIC",L"Choose a timed line. Arrow keys move; Enter jumps. Escape cancels.",
+    HWND hint=CreateWindowW(L"STATIC",self->hintText.c_str(),
        WS_CHILD|WS_VISIBLE,16,12,686,26,h,nullptr,GetModuleHandleW(nullptr),nullptr);
     SendMessageW(hint,WM_SETFONT,reinterpret_cast<WPARAM>(self->text),TRUE);
     self->list=CreateWindowExW(WS_EX_CLIENTEDGE,L"LISTBOX",L"",
@@ -477,7 +498,7 @@ struct LyricChooser {
        x,412,150,37,h,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),GetModuleHandleW(nullptr),nullptr);
      SendMessageW(b,WM_SETFONT,reinterpret_cast<WPARAM>(self->text),TRUE);
     };
-    createButton(L"Jump to line",398,301,BS_DEFPUSHBUTTON);
+    createButton(self->confirmText.c_str(),398,301,BS_DEFPUSHBUTTON);
     createButton(L"Cancel",558,302,BS_PUSHBUTTON);
     SetFocus(self->list);
     if(self->syntheticMute)PostMessageW(self->list,WM_KEYDOWN,VK_F8,0);
@@ -509,7 +530,7 @@ struct LyricChooser {
   const bool disableOwner=owner&&IsWindow(owner)&&IsWindowEnabled(owner);
   const HWND priorFocus=disableOwner?GetFocus():nullptr;
   if(disableOwner)EnableWindow(owner,FALSE);
-  hwnd=CreateWindowExW(WS_EX_DLGMODALFRAME,cls.lpszClassName,L"ROOMTONE | Timed lyrics",
+  hwnd=CreateWindowExW(WS_EX_DLGMODALFRAME,cls.lpszClassName,dialogTitle.c_str(),
     WS_CAPTION|WS_SYSMENU|WS_VISIBLE,CW_USEDEFAULT,CW_USEDEFAULT,735,505,
     owner,nullptr,cls.hInstance,this);
   if(!hwnd){if(disableOwner)EnableWindow(owner,TRUE);
@@ -537,6 +558,16 @@ struct LyricChooser {
 inline std::optional<std::size_t> selectLyric(const std::vector<std::wstring>& rows,
  std::size_t current,HWND owner=nullptr,std::function<void()> emergencyMute={}){
  LyricChooser picker;picker.rows=&rows;picker.current=current;picker.owner=owner;
+ picker.emergencyMute=std::move(emergencyMute);
+ return picker.run();
+}
+inline std::optional<std::size_t> selectQueuedSong(
+ const std::vector<std::wstring>& rows,std::size_t current,HWND owner,
+ std::function<void()> emergencyMute={}){
+ LyricChooser picker;picker.rows=&rows;picker.current=current;picker.owner=owner;
+ picker.dialogTitle=L"ROOMTONE | Local song queue";
+ picker.hintText=L"Choose an owner-selected local song. Enter selects; Esc cancels. No automatic playback.";
+ picker.confirmText=L"Select song";
  picker.emergencyMute=std::move(emergencyMute);
  return picker.run();
 }
