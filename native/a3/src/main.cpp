@@ -13,6 +13,7 @@
 #include "song_queue.hpp"
 #include "desktop_ui.hpp"
 #include "device_recovery.hpp"
+#include "effect_controls.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <sstream>
@@ -679,6 +680,20 @@ int main(int argc,char** argv) {
                 if(!songQueue.commitVerified(index,*after))
                     throw std::runtime_error("Queue changed during owner-selected transition");
             };
+            const roomtone::effects::Settings startupEffects=roomtone::effects::clamp(
+                {opt.wet,opt.gain,opt.echo,opt.feedback,opt.musicGain,opt.echoMs});
+            const auto currentEffects=[&]()->roomtone::effects::Settings{
+                return {rt.wet.load(),rt.gain.load(),rt.echo.load(),
+                        rt.feedback.load(),rt.musicGain.load(),rt.echoMs.load()};
+            };
+            const auto applyEffects=[&](roomtone::effects::Settings value){
+                value=roomtone::effects::clamp(value);
+                // The original callback continues to read the SAME atomic
+                // parameters and existing VocalDsp; no second DSP/state engine.
+                rt.wet.store(value.wet);rt.echo.store(value.echo);
+                rt.feedback.store(value.feedback);rt.echoMs.store(value.delayMs);
+                rt.gain.store(value.gain);rt.musicGain.store(value.music);
+            };
             roomtone::desktop::Window window;
             const auto chooseQueueEntry=[&](const wchar_t* operation)->std::optional<std::size_t>{
                 if(songQueue.size()==0)return std::nullopt;
@@ -758,6 +773,7 @@ int main(int argc,char** argv) {
                 view.deviceActive=deviceActive;view.hasSong=rt.mixer.hasSong();
                 view.hasLyrics=hasHandoff&&!rt.session.lines.empty();
                 view.reverb=rt.wet.load();view.echo=rt.echo.load();view.music=rt.musicGain.load();view.gain=rt.gain.load();
+                view.feedback=rt.feedback.load();view.delayMs=rt.echoMs.load();
                 view.input=inputName.empty()?L"Windows default":roomtone::desktop::wide(inputName);
                 view.output=outputName.empty()?L"Windows default":roomtone::desktop::wide(outputName);
                 view.notice=rt.interrupted.load()&&deviceActive
@@ -942,6 +958,84 @@ int main(int argc,char** argv) {
                         break;
                     }
                     case Action::Repeat:rt.repeat.store(!rt.repeat.load());break;
+                    case Action::FeedbackDown:case Action::FeedbackUp:{
+                        // Raising echo feedback while microphone monitoring is
+                        // active must not silently increase live acoustic risk.
+                        if(action==Action::FeedbackUp&&rt.monitoring.load()){
+                            rt.monitoring.store(false);
+                            notice=L"Microphone muted before increasing echo feedback. Re-enable explicitly.";
+                        }
+                        auto state=currentEffects();
+                        state.feedback=roomtone::effects::nudge(state.feedback,
+                            action==Action::FeedbackUp?2:-2,0.35f);
+                        applyEffects(state);
+                        if(action==Action::FeedbackDown||!rt.monitoring.load())
+                           notice=L"Echo feedback "+std::to_wstring(static_cast<int>(
+                               std::lround(state.feedback*100.0f)))+
+                               L"%. Native local DSP; microphone monitoring must be explicitly approved.";
+                        break;
+                    }
+                    case Action::DelayShorter:case Action::DelayLonger:{
+                        auto state=currentEffects();
+                        state.delayMs=roomtone::effects::nudgeDelay(state.delayMs,
+                            action==Action::DelayShorter?-20:20);
+                        applyEffects(state);
+                        notice=L"Echo delay "+std::to_wstring(state.delayMs)+L" ms (not measured input-output latency).";
+                        break;
+                    }
+                    case Action::DryVoice:{
+                        applyEffects(roomtone::effects::dryVoice(currentEffects()));
+                        notice=L"Dry voice: reverb, echo and feedback OFF; original music and gain unchanged.";
+                        break;
+                    }
+                    case Action::RestoreEffects:{
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        applyEffects(startupEffects);
+                        notice=L"Original launch effects restored; voice MUTED and song PAUSED before increase.";
+                        break;
+                    }
+                    case Action::ShowEffects:{
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        const auto fx=currentEffects();
+                        const auto percent=[](float v){return std::to_wstring(
+                          static_cast<int>(std::lround(v*100.0f)))+L"%";};
+                        const std::wstring report=
+                            L"Current ORIGINAL VocalDsp (local-only)\n\n"+
+                            std::wstring(L"Reverb: ")+percent(fx.wet)+L" (0-25%)\n"+
+                            L"Echo amount: "+percent(fx.echo)+L" (0-35%)\n"+
+                            L"Echo feedback: "+percent(fx.feedback)+L" (0-35%)\n"+
+                            L"Echo delay: "+std::to_wstring(fx.delayMs)+L" ms (80-550)\n"+
+                            L"Voice gain: "+percent(fx.gain)+L" (0-35%)\n"+
+                            L"Music level: "+percent(fx.music)+L" (0-50%)\n\n"+
+                            L"This is DSP configuration, NOT measured microphone latency.\n"+
+                            L"Monitoring and music were paused before this modal dialog.";
+                        MessageBoxW(window.hwnd,report.c_str(),L"ROOMTONE | Original DSP parameters",MB_OK|MB_ICONINFORMATION);
+                        notice=L"Effects inspected. Voice MUTED, music PAUSED. No settings changed.";
+                        break;
+                    }
+                    case Action::ShowRecovery:{
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        const std::wstring phase=rt.interrupted.load()?L"INTERRUPTED":
+                            deviceActive?L"READY (muted)":L"OFFLINE (muted)";
+                        const std::wstring steps=
+                            L"1. Physically mute microphone; use wired headphones at low volume.\n"
+                            L"2. Verify Windows capture/playback device and USB connection.\n"
+                            L"3. If device names or endpoint identity changed, use Audio > Choose devices.\n"
+                            L"4. Use Audio > Owner reconnect (Ctrl+R); it ALWAYS restarts muted/paused.\n"
+                            L"5. Check current playhead before separately enabling music/voice.\n"
+                            L"6. Stop speakers physically if any acoustic feedback occurs.\n\n"
+                            L"Physical QuadCast/Pebble latency, feedback and real USB recovery: NOT TESTED.";
+                        const std::wstring report=L"Audio state: "+phase+
+                            L"\nInput: "+(inputName.empty()?L"Windows default":roomtone::desktop::wide(inputName))+
+                            L"\nOutput: "+(outputName.empty()?L"Windows default":roomtone::desktop::wide(outputName))+
+                            L"\nPosition: "+std::to_wstring(rt.songPosition.load()/48000)+
+                            L" seconds (source callback or owner seek)\n"+
+                            (lastDeviceIssue.empty()?L"":L"\nLatest device diagnostic: "+lastDeviceIssue+L"\n")+
+                            L"\n"+steps;
+                        MessageBoxW(window.hwnd,report.c_str(),L"ROOMTONE | Audio recovery guide",MB_OK|MB_ICONINFORMATION);
+                        notice=L"Audio inspected. Reconnect is owner-initiated; voice MUTED/music PAUSED.";
+                        break;
+                    }
                     case Action::ReverbDown:level(rt.wet,-0.02f,0.25f);break;
                     case Action::ReverbUp:level(rt.wet,0.02f,0.25f);break;
                     case Action::EchoDown:level(rt.echo,-0.02f,0.35f);break;
@@ -1102,6 +1196,7 @@ int main(int argc,char** argv) {
                             notice=L"Import canceled; previous lyrics and song position retained. Voice MUTED.";
                             break;
                         }
+                        const bool wasReady=deviceActive&&!rt.interrupted.load();
                         safeStop();
                         rt.session=loaded;hasHandoff=true;rt.repeat.store(loaded.loop);
                         importedLyricOffset=loaded.offsetMs;
@@ -1112,8 +1207,13 @@ int main(int argc,char** argv) {
                         rt.practiceStartMarked=rt.abLoop.load();
                         rt.seekRequest.store(std::min<std::uint64_t>(loaded.startMs*48ULL,rt.mixer.songFrames()));
                         displayTitle=roomtone::desktop::wide(loaded.title);
-                        safeRestart();
-                        notice=L"Local timed lyrics imported. Voice MUTED; music PAUSED. Use Browse lyrics (Ctrl+L).";
+                        // Lyrics/session import is NOT an explicit request to
+                        // reconnect unavailable hardware. Only reopen a prior
+                        // known-good driver, muted and paused.
+                        if(wasReady)safeRestart();
+                        notice=wasReady
+                            ?L"Local timed lyrics imported. Voice MUTED; music PAUSED. Ctrl+L browses lines."
+                            :L"Local lyrics imported OFFLINE. Reconnect manually; voice/music remain muted.";
                         break;
                     }
                     case Action::ChooseDevices:{
