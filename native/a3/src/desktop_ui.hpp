@@ -37,7 +37,8 @@ enum Action {
   PreviousLine,BrowseLyrics,MarkLoopA,MarkLoopB,ClearAB,ToggleAB,OffsetEarlier,OffsetLater,OffsetReset,SaveSession,AddQueueSong,ShowQueue,NextQueueSong,PreviousQueueSong,
   RemoveQueuedSong,MoveQueuedUp,MoveQueuedDown,ClearPendingQueue,
   FeedbackDown,FeedbackUp,DelayShorter,DelayLonger,DryVoice,RestoreEffects,ShowEffects,ShowRecovery,
-  ChooseLyricSection,SeekLoopA,SeekLoopB,FocusLyrics,IncreaseLyricText,DecreaseLyricText,SuspendAudio,ShowSignals
+  ChooseLyricSection,SeekLoopA,SeekLoopB,FocusLyrics,IncreaseLyricText,DecreaseLyricText,SuspendAudio,ShowSignals,
+  MarkRehearsalCue,BrowseRehearsalCues,RemoveRehearsalCue,ClearRehearsalCues
 };
 struct Snapshot {
  std::wstring title,previous,current,next,input,output,notice;
@@ -247,7 +248,11 @@ struct Window {
      {SaveSession,L"Save local practice session\tCtrl+S"},
      {ChooseLyricSection,L"Select A-B from authored lyric lines\tCtrl+7"},
      {SeekLoopA,L"Pause and seek to marker A\tCtrl+8"},
-     {SeekLoopB,L"Pause and seek to marker B\tCtrl+9"}};
+     {SeekLoopB,L"Pause and seek to marker B\tCtrl+9"},
+      {MarkRehearsalCue,L"Mark rehearsal bookmark on THIS song\tCtrl+B"},
+      {BrowseRehearsalCues,L"Browse / pause at rehearsal bookmark\tCtrl+J"},
+      {RemoveRehearsalCue,L"Remove an original-source bookmark\tCtrl+K"},
+      {ClearRehearsalCues,L"Clear this song's rehearsal bookmarks"}};
     for(const auto& entry:entries)AppendMenuW(practiceMenu,MF_STRING,
        static_cast<UINT_PTR>(entry.action),entry.title);
     AppendMenuW(menubar,MF_POPUP,reinterpret_cast<UINT_PTR>(practiceMenu),L"&Practice");
@@ -334,6 +339,10 @@ struct Window {
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::MarkLoopA,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::OffsetLater,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::SaveSession,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::MarkRehearsalCue,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::BrowseRehearsalCues,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::RemoveRehearsalCue,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::ClearRehearsalCues,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::AddQueueSong,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::ShowQueue,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::NextQueueSong,0),0);
@@ -402,7 +411,7 @@ struct Window {
     else if(w==VK_F10)self->notify(Play);
     return 0;
    case WM_COMMAND:
-    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=154)
+    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=158)
      self->notify(static_cast<Action>(LOWORD(w)));
     return 0;
    case WM_CLOSE:
@@ -445,6 +454,9 @@ struct Window {
        case 'I':shortcut=ChooseSession;break;
        case 'D':shortcut=ChooseDevices;break;
        case 'L':shortcut=BrowseLyrics;break;
+       case 'B':shortcut=MarkRehearsalCue;break;
+       case 'J':shortcut=BrowseRehearsalCues;break;
+       case 'K':shortcut=RemoveRehearsalCue;break;
        case 'R':shortcut=Reconnect;break;
        case '1':shortcut=MarkLoopA;break;
        case '2':shortcut=MarkLoopB;break;
