@@ -14,6 +14,7 @@
 #include <optional>
 #include <stdexcept>
 #include <cstddef>
+#include <cstdint>
 
 namespace roomtone::desktop {
 // All Win32 window/UI callbacks run on the application's main/control thread.
@@ -32,10 +33,13 @@ enum Action {
  Play=101,Mic,Back,Forward,Restart,Repeat,NextLine,
  ReverbDown,ReverbUp,EchoDown,EchoUp,MusicDown,MusicUp,
  ChooseSong,ChooseSession,ChooseDevices,Reconnect,EmergencyMute,GainDown,GainUp,
-  PreviousLine,BrowseLyrics
+  PreviousLine,BrowseLyrics,MarkLoopA,MarkLoopB,ClearAB,ToggleAB,OffsetEarlier,OffsetLater,OffsetReset
 };
 struct Snapshot {
  std::wstring title,previous,current,next,input,output,notice;
+ std::uint64_t loopA=0,loopB=0;
+ int lyricOffsetMs=0;
+ bool loopMarked=false,loopEnabled=false;
  unsigned positionSeconds=0,durationSeconds=0;
  float reverb=0,echo=0,music=0,gain=0;
  bool playing=false,microphone=false,repeat=false,interrupted=false,deviceActive=false,hasSong=false,hasLyrics=false;
@@ -121,6 +125,15 @@ struct Window {
   if(!controller.snapshot)return;
   const auto s=controller.snapshot();
   setText(title,s.title.empty()?L"ROOMTONE / NATIVE KARAOKE":s.title);
+  std::wstring practiceNote=L"Position (slider arrows / Home / End) · Practice menu";
+  if(s.loopMarked){
+   practiceNote=L"A "+clock(static_cast<unsigned>(s.loopA/48000))+
+      L" · B "+clock(static_cast<unsigned>(s.loopB/48000))+
+      (s.loopEnabled?L" · A-B LOOP ON":L" · A-B LOOP OFF");
+  }
+  if(s.hasLyrics)practiceNote+=L" · offset "+
+      std::to_wstring(s.lyricOffsetMs)+L"ms";
+  setText(seekLabel,practiceNote);
   setText(previous,s.previous.empty()?L" ":s.previous);
   setText(current,s.current.empty()?L"No synchronized lyrics loaded":s.current);
   setText(next,s.next.empty()?L" ":s.next);
@@ -173,6 +186,24 @@ struct Window {
    case WM_CREATE:{
     self->minorFont=font(17);self->regular=font(17);self->large=font(30,true);
     self->heading=font(25,true);
+   HMENU menubar=CreateMenu(),practiceMenu=CreatePopupMenu();
+   if(menubar&&practiceMenu){
+    const struct Entry {Action action;const wchar_t* title;} entries[]={
+     {MarkLoopA,L"Mark loop start A\tCtrl+1"},
+     {MarkLoopB,L"Mark loop end B\tCtrl+2"},
+     {ClearAB,L"Clear A-B loop\tCtrl+3"},
+     {ToggleAB,L"Toggle A-B loop\tCtrl+4"},
+     {OffsetEarlier,L"Lyrics 100 ms earlier\tCtrl+["},
+     {OffsetLater,L"Lyrics 100 ms later\tCtrl+]"},
+     {OffsetReset,L"Reset lyric offset\tCtrl+0"}};
+    for(const auto& entry:entries)AppendMenuW(practiceMenu,MF_STRING,
+       static_cast<UINT_PTR>(entry.action),entry.title);
+    AppendMenuW(menubar,MF_POPUP,reinterpret_cast<UINT_PTR>(practiceMenu),L"&Practice");
+    SetMenu(h,menubar);
+   }else{
+    if(practiceMenu)DestroyMenu(practiceMenu);
+    if(menubar)DestroyMenu(menubar);
+   }
     self->title=self->label(L"ROOMTONE",SS_LEFT,self->heading);
     self->previous=self->label(L"",SS_CENTER,self->minorFont);
     self->current=self->label(L"",SS_CENTER|SS_CENTERIMAGE,self->large);
@@ -206,6 +237,8 @@ struct Window {
         PostMessageW(h,WM_TIMER,1,0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::PreviousLine,BN_CLICKED),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::BrowseLyrics,BN_CLICKED),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::MarkLoopA,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::OffsetLater,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::Play,BN_CLICKED),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::EmergencyMute,BN_CLICKED),0);
         PostMessageW(h,WM_CLOSE,0,0);
@@ -248,7 +281,7 @@ struct Window {
     else if(w==VK_F10)self->notify(Play);
     return 0;
    case WM_COMMAND:
-    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=122)
+    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=129)
      self->notify(static_cast<Action>(LOWORD(w)));
     return 0;
    case WM_CLOSE:
@@ -291,6 +324,13 @@ struct Window {
        case 'D':shortcut=ChooseDevices;break;
        case 'L':shortcut=BrowseLyrics;break;
        case 'R':shortcut=Reconnect;break;
+       case '1':shortcut=MarkLoopA;break;
+       case '2':shortcut=MarkLoopB;break;
+       case '3':shortcut=ClearAB;break;
+       case '4':shortcut=ToggleAB;break;
+       case '0':shortcut=OffsetReset;break;
+       case VK_OEM_4:shortcut=OffsetEarlier;break;
+       case VK_OEM_6:shortcut=OffsetLater;break;
        default:recognized=false;break;
       }
       if(recognized){notify(shortcut);continue;}

@@ -5,7 +5,7 @@ int main(){
 #ifdef _WIN32
  try{
   roomtone::desktop::Window window;
-  unsigned snapshots=0,playEvents=0,muteEvents=0,seekEvents=0,lastSeek=0,topologyEvents=0,tickEvents=0,previousEvents=0,browseEvents=0,modalMuteEvents=0;
+  unsigned snapshots=0,playEvents=0,muteEvents=0,seekEvents=0,lastSeek=0,topologyEvents=0,tickEvents=0,previousEvents=0,browseEvents=0,modalMuteEvents=0,loopEvents=0,offsetEvents=0;
   window.syntheticTest=true;
   bool compactLayout=false;
   window.controller.snapshot=[&]{
@@ -29,6 +29,8 @@ int main(){
    if(action==roomtone::desktop::EmergencyMute)++muteEvents;
    if(action==roomtone::desktop::PreviousLine)++previousEvents;
    if(action==roomtone::desktop::BrowseLyrics)++browseEvents;
+   if(action==roomtone::desktop::MarkLoopA)++loopEvents;
+   if(action==roomtone::desktop::OffsetLater)++offsetEvents;
   };
   window.controller.seekSeconds=[&](unsigned sec){++seekEvents;lastSeek=sec;};
   window.controller.deviceChanged=[&]{++topologyEvents;};
@@ -57,7 +59,7 @@ int main(){
     throw std::runtime_error("Lyric chooser incorrectly posted process-wide quit");
   }
   const int result=window.run();
-  if(result!=0||snapshots==0||playEvents!=1||muteEvents!=1||previousEvents!=1||browseEvents!=1||modalMuteEvents!=1||!compactLayout||topologyEvents<1||tickEvents==0||seekEvents!=1||lastSeek!=43)
+  if(result!=0||snapshots==0||playEvents!=1||muteEvents!=1||previousEvents!=1||browseEvents!=1||loopEvents!=1||offsetEvents!=1||modalMuteEvents!=1||!compactLayout||topologyEvents<1||tickEvents==0||seekEvents!=1||lastSeek!=43)
    throw std::runtime_error("in-process control/seek message, modal lifetime and focus");
   if(roomtone::desktop::wide("Nacht \xC3\xBC""ber")!=L"Nacht \xFC""ber")
    throw std::runtime_error("UTF-8 lyric display decoding");
