@@ -1661,7 +1661,7 @@ int main(int argc,char** argv) {
                  <<"Predecoded backing frames: "<<rt.mixer.songFrames()<<"\n"
                  <<"HEADPHONES FIRST; NO acoustic feedback detection. Physical microphone mute is fastest.\n"
                  <<"Commands m, p, r, open, load PATH, seek SECONDS (+/- relative),\n"
-                 <<"loop on/off, reconnect,\n"
+                 <<"loop on/off, speed 0.60..1.20 (backing only; pitch changes), reconnect,\n"
                  <<"open/load, lyrics, next-line (from handoff), save PATH.rtk, status, effects, q.\n";
         std::string command;
         while(std::getline(std::cin,command)){

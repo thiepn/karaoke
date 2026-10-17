@@ -56,6 +56,16 @@ int main(){
  mix.replaceSong(std::vector<float>(100*2,0.2f));
  for(int i=0;i<200;++i)mix.render(0,false,true,0.4f,NAN);
  need(mix.songEnded(),"invalid callback rate uses finite original 1x fallback");
+ // Fractional backing speed never resamples or retimes the microphone path.
+ std::vector<float> drySource(4000*2,0.0f);
+ KaraokeMix slowVoice(drySource,0,0.2f),fastVoice(drySource,0,0.2f);
+ for(int i=0;i<1300;++i){
+  const auto slow=slowVoice.render(.5f,true,false,0.0f,.6f);
+  const auto fast=fastVoice.render(.5f,true,false,0.0f,1.2f);
+  need(std::abs(slow.left-fast.left)<0.0000001f&&
+       std::abs(slow.right-fast.right)<0.0000001f,
+       "backing speed must not alter original 48kHz live vocal DSP");
+ }
  mix.replaceSong({});
  need(!mix.hasSong()&&mix.position()==0,"source replacement clears transport");
  std::cout<<"PASS original WASAPI backing PCM-rate resampling, stereo interpolation, exact 1x, speed bounds, seek/EOF/replacement, paused fade; NOT pitch preserving.\n";
