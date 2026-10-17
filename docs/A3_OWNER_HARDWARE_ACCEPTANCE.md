@@ -56,3 +56,11 @@ Physical QuadCast/Pebble behavior, genuine endpoint re-enumeration, acoustic fee
 - Mark invalid B at or before A; the old valid state should not be silently replaced. Clear A-B (Ctrl+3) and confirm native Repeat reverts to whole-song semantics. Test song replacement and .rtk A-B restoration.
 - Import timed .rtk or .lrc and adjust lyric offset by ±100 ms, then reset to the imported offset. Ensure this shifts display/navigation but never alters audio samples or writes files. Test offline marker edits and reconnect at saved position with mic/music muted.
 - Keyboard practice actions and Windows 1366×768 menu accessibility need human testing; physical QuadCast/Pebble validation and real latency remain NO GO.
+
+## A3/A4 owner session export acceptance (NOT TESTED physically)
+
+1. Load a local instrumental and matching UTF-8 .lrc or .rtk. Seek while offline and/or playing, nudge lyric offset and enable A–B. Choose Practice → Save local practice session (Ctrl+S), select a NEW `.rtk` filename. Confirm microphone/song are muted/paused on return, with no automatic recording.
+2. Open the saved text file privately: it must contain `ROOMTONE_HANDOFF_V1` and only source audio filename, title, line timestamps/text, bounded offset and active A–B/position. It must not include audio bytes, full local paths, recordings, device endpoint IDs or secrets. Test Unicode filenames and lyrics.
+3. Quit and re-open with the original song and the saved .rtk; confirm the source-owned lyrics, practice offset, A–B loop and saved position. A plain whole-song repeat is deliberately not exported as an A–B loop.
+4. Cancel the native Save dialog, select an existing destination, or unplug the output while exporting: ensure no overwrite, no silent fallback, no automatic mic/music activation, and previous session remains usable. Repeat from an already offline state; it must not attempt to reconnect automatically.
+5. Validate 1366x768, high DPI, Ctrl+S and NVDA/Narrator accessibility separately. CI tests only synthetic Win32 actions and portable format; no physical hardware/latency claims.

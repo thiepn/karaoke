@@ -836,24 +836,26 @@ int main(int argc,char** argv) {
                         // Export always joins the original callback, ensuring the
                         // pending seek/restart is frozen consistently. A file picker
                         // cannot leave voice monitoring enabled.
+                        const bool wasReady=deviceActive&&!rt.interrupted.load();
                         safeStop();
-                        const auto exportSession=roomtone::session_export::snapshot(
-                            hasHandoff?rt.session:roomtone::Handoff{},
-                            selectedSongFile,selectedSongFile,
-                            rt.songPosition.load(),rt.mixer.songFrames(),
-                            rt.repeat.load(),rt.abStart.load(),rt.abEnd.load(),rt.abLoop.load());
-                        const auto encoded=roomtone::session_export::encode(exportSession);
+                        const auto reopenIfReady=[&]{if(wasReady)safeRestart();};
                         try{
+                            const auto exportSession=roomtone::session_export::snapshot(
+                                hasHandoff?rt.session:roomtone::Handoff{},
+                                selectedSongFile,selectedSongFile,
+                                rt.songPosition.load(),rt.mixer.songFrames(),
+                                rt.repeat.load(),rt.abStart.load(),rt.abEnd.load(),rt.abLoop.load());
+                            const auto encoded=roomtone::session_export::encode(exportSession);
                             const auto destination=chooseSessionSaveFile();
                             if(!destination.empty()){
                                 saveSessionNew(std::filesystem::path(destination),encoded);
-                                safeRestart();
-                                notice=L"Practice session saved to chosen local .rtk file. Voice MUTED, music PAUSED.";
+                                reopenIfReady();
+                                notice=L"Practice saved to a NEW local .rtk file. Voice MUTED, music PAUSED.";
                             }else{
-                                safeRestart();
+                                reopenIfReady();
                                 notice=L"Save canceled; no file written. Voice MUTED, music PAUSED.";
                             }
-                        }catch(...){safeRestart();throw;}
+                        }catch(...){reopenIfReady();throw;}
                         break;
                     }
                     case Action::Reconnect:safeStop();safeRestart();break;
@@ -994,7 +996,7 @@ int main(int argc,char** argv) {
                  <<"HEADPHONES FIRST; NO acoustic feedback detection. Physical microphone mute is fastest.\n"
                  <<"Commands m, p, r, open, load PATH, seek SECONDS (+/- relative),\n"
                  <<"loop on/off, reconnect,\n"
-                 <<"open/load, lyrics, next-line (from handoff), status, live effects, q.\n";
+                 <<"open/load, lyrics, next-line (from handoff), save PATH.rtk, status, effects, q.\n";
         std::string command;
         while(std::getline(std::cin,command)){
             try {
@@ -1005,10 +1007,12 @@ int main(int argc,char** argv) {
                 if(op=="open"||op=="load"){
                     rt.monitoring.store(false);rt.musicPlaying.store(false);
                     std::vector<float> next;
+                    std::string nextFile;
                     if(op=="open"){
                         const auto chosen=chooseSongFile();
                         if(chosen.empty()){std::cout<<"Selection cancelled; previous song retained, mic and music muted.\n";continue;}
                         next=loadSong("",chosen);
+                        nextFile=std::filesystem::path(chosen).filename().u8string();
                     }else{
                         std::string path;std::getline(in,path);
                         const auto first=path.find_first_not_of(" \t");
@@ -1016,6 +1020,7 @@ int main(int argc,char** argv) {
                         path.erase(0,first);
                         if(path.size()>=2&&path.front()=='"'&&path.back()=='"')path=path.substr(1,path.size()-2);
                         next=loadSong(path);
+                        nextFile=std::filesystem::u8path(path).filename().u8string();
                     }
                     if(next.empty())throw std::runtime_error("Selected file has no audio");
                     // Stop and join the real-time thread before replacing audio memory.
@@ -1025,10 +1030,42 @@ int main(int argc,char** argv) {
                     rt.mixer.replaceSong(std::move(next));
                     rt.session=roomtone::Handoff{};rt.abLoop.store(false);rt.abStart.store(0);rt.abEnd.store(0);
                     rt.practiceStartMarked=false;rt.repeat.store(false);hasHandoff=false;
+                    selectedSongFile=std::move(nextFile);
+                    importedLyricOffset=0;
                     rt.mixer.vocal.reset();
                     rt.songPosition.store(0);
                     if(startDevice())std::cout<<"New song loaded: MIC MUTED + SONG PAUSED. Press p to play.\n";
                     else std::cout<<"New song loaded, but device unavailable. Retry reconnect.\n";
+                }else if(op=="save"){
+                    if(!rt.mixer.hasSong()||selectedSongFile.empty()){
+                        std::cout<<"Load an original local song before exporting a session.\n";continue;
+                    }
+                    std::string path;std::getline(in,path);
+                    const auto first=path.find_first_not_of(" \t");
+                    if(first==std::string::npos)throw std::invalid_argument("save requires a new local .rtk path");
+                    path.erase(0,first);
+                    if(path.size()>=2&&path.front()=='"'&&path.back()=='"')
+                        path=path.substr(1,path.size()-2);
+                    const auto destination=std::filesystem::u8path(path);
+                    auto extension=destination.extension().u8string();
+                    std::transform(extension.begin(),extension.end(),extension.begin(),
+                        [](unsigned char c){return static_cast<char>(std::tolower(c));});
+                    if(extension!=".rtk")throw std::invalid_argument("save requires .rtk filename");
+                    rt.monitoring.store(false);rt.musicPlaying.store(false);
+                    const bool wasReady=deviceActive&&!rt.interrupted.load();
+                    if(deviceActive){ma_device_uninit(&device);deviceActive=false;}
+                    roomtone::recovery::freeze(rt.seekRequest,rt.rewindRequest,
+                                               rt.songPosition,rt.mixer.songFrames());
+                    try{
+                        const auto session=roomtone::session_export::snapshot(
+                            hasHandoff?rt.session:roomtone::Handoff{},
+                            selectedSongFile,selectedSongFile,
+                            rt.songPosition.load(),rt.mixer.songFrames(),
+                            rt.repeat.load(),rt.abStart.load(),rt.abEnd.load(),rt.abLoop.load());
+                        saveSessionNew(destination,roomtone::session_export::encode(session));
+                    }catch(...){if(wasReady)startDevice();throw;}
+                    if(wasReady)startDevice();
+                    std::cout<<"Saved to owner-selected new .rtk path; MIC MUTED + SONG PAUSED.\n";
                 }else if(op=="reconnect"){
                     rt.monitoring.store(false);rt.musicPlaying.store(false);
                     if(deviceActive){ma_device_uninit(&device);deviceActive=false;}
