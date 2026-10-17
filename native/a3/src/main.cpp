@@ -1694,6 +1694,9 @@ int main(int argc,char** argv) {
                     rt.seekRequest.store(std::numeric_limits<std::uint64_t>::max());
                     rt.rewindRequest.store(false);
                     rt.mixer.replaceSong(std::move(next));
+                    // CLI source replacement is also a fresh original owner
+                    // selection. Do not carry an unrelated backing rate.
+                    rt.backingSpeed.store(roomtone::practice_speed::Normal);
                     rt.session=roomtone::Handoff{};rt.abLoop.store(false);rt.abStart.store(0);rt.abEnd.store(0);
                     rt.practiceStartMarked=false;rt.repeat.store(false);hasHandoff=false;
                     selectedSongFile=std::move(nextFile);
