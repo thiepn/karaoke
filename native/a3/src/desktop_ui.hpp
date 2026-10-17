@@ -38,7 +38,8 @@ enum Action {
   RemoveQueuedSong,MoveQueuedUp,MoveQueuedDown,ClearPendingQueue,
   FeedbackDown,FeedbackUp,DelayShorter,DelayLonger,DryVoice,RestoreEffects,ShowEffects,ShowRecovery,
   ChooseLyricSection,SeekLoopA,SeekLoopB,FocusLyrics,IncreaseLyricText,DecreaseLyricText,SuspendAudio,ShowSignals,
-  MarkRehearsalCue,BrowseRehearsalCues,RemoveRehearsalCue,ClearRehearsalCues
+  MarkRehearsalCue,BrowseRehearsalCues,RemoveRehearsalCue,ClearRehearsalCues,
+  SpeedDown,SpeedUp,SpeedReset,SpeedInfo
 };
 struct Snapshot {
  std::wstring title,previous,current,next,input,output,notice;
@@ -48,6 +49,7 @@ struct Snapshot {
  unsigned positionSeconds=0,durationSeconds=0;
  std::size_t queueIndex=0,queueTotal=0;
  float reverb=0,echo=0,music=0,gain=0,feedback=0;
+ float backingSpeed=1.0f; // original instrumental only; pitch changes
  unsigned delayMs=280;
  bool playing=false,microphone=false,repeat=false,interrupted=false,ownerSuspended=false,deviceActive=false,hasSong=false,hasLyrics=false;
 };
@@ -174,6 +176,9 @@ struct Window {
   if(s.hasLyrics)practiceNote+=L" · offset "+
       std::to_wstring(s.lyricOffsetMs)+L"ms";
   if(focusedLyrics)practiceNote+=L" · FOCUS · Ctrl+F exits · Ctrl +/- text";
+  practiceNote+=L" | Backing "+
+      std::to_wstring(static_cast<int>(s.backingSpeed*100.0f+0.5f))+
+      L"% (pitch changes)";
   setText(seekLabel,practiceNote);
   setText(previous,s.previous.empty()?L" ":s.previous);
   setText(current,s.current.empty()?L"No synchronized lyrics loaded":s.current);
@@ -235,7 +240,7 @@ struct Window {
     self->heading=font(25,true);
     for(int i=0;i<6;++i)
      self->lyricFonts[i]=font(roomtone::reading_view::fontSize(i>=3,i%3),true);
-   HMENU menubar=CreateMenu(),practiceMenu=CreatePopupMenu(),songMenu=CreatePopupMenu(),effectsMenu=CreatePopupMenu(),recoveryMenu=CreatePopupMenu(),viewMenu=CreatePopupMenu();
+   HMENU menubar=CreateMenu(),practiceMenu=CreatePopupMenu(),songMenu=CreatePopupMenu(),effectsMenu=CreatePopupMenu(),recoveryMenu=CreatePopupMenu(),viewMenu=CreatePopupMenu(),speedMenu=CreatePopupMenu();
    if(menubar&&practiceMenu){
     const struct Entry {Action action;const wchar_t* title;} entries[]={
      {MarkLoopA,L"Mark loop start A\tCtrl+1"},
@@ -288,6 +293,14 @@ struct Window {
      AppendMenuW(recoveryMenu,MF_STRING,EmergencyMute,L"VOICE MUTE (focused window)\tF8");
      AppendMenuW(menubar,MF_POPUP,reinterpret_cast<UINT_PTR>(recoveryMenu),L"&Audio");
     }
+    if(speedMenu){
+      AppendMenuW(speedMenu,MF_STRING,SpeedDown,L"Slower backing -10% (pitch changes)\tCtrl+T");
+      AppendMenuW(speedMenu,MF_STRING,SpeedUp,L"Faster backing +10% (pitch changes)\tCtrl+Y");
+      AppendMenuW(speedMenu,MF_STRING,SpeedReset,L"Original backing speed 100%\tCtrl+G");
+      AppendMenuW(speedMenu,MF_SEPARATOR,0,nullptr);
+      AppendMenuW(speedMenu,MF_STRING,SpeedInfo,L"Backing rate and pitch disclosure");
+      AppendMenuW(menubar,MF_POPUP,reinterpret_cast<UINT_PTR>(speedMenu),L"&Backing speed");
+     }
     if(viewMenu){
       AppendMenuW(viewMenu,MF_STRING,FocusLyrics,L"Large-lyric focus view (toggle)\tCtrl+F");
       AppendMenuW(viewMenu,MF_STRING,IncreaseLyricText,L"Enlarge current lyric\tCtrl++");
@@ -301,6 +314,7 @@ struct Window {
     if(effectsMenu)DestroyMenu(effectsMenu);
     if(recoveryMenu)DestroyMenu(recoveryMenu);
     if(viewMenu)DestroyMenu(viewMenu);
+    if(speedMenu)DestroyMenu(speedMenu);
     if(menubar)DestroyMenu(menubar);
    }
     self->title=self->label(L"ROOMTONE",SS_LEFT,self->heading);
@@ -360,6 +374,10 @@ struct Window {
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::ShowEffects,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::ShowRecovery,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::ShowSignals,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::SpeedDown,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::SpeedUp,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::SpeedReset,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::SpeedInfo,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::ChooseLyricSection,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::SeekLoopA,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::SeekLoopB,0),0);
@@ -411,7 +429,7 @@ struct Window {
     else if(w==VK_F10)self->notify(Play);
     return 0;
    case WM_COMMAND:
-    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=158)
+    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=162)
      self->notify(static_cast<Action>(LOWORD(w)));
     return 0;
    case WM_CLOSE:
@@ -476,6 +494,9 @@ struct Window {
         case 'F':shortcut=FocusLyrics;break;
         case 'U':shortcut=SuspendAudio;break;
         case 'M':shortcut=ShowSignals;break;
+        case 'T':shortcut=SpeedDown;break;
+        case 'Y':shortcut=SpeedUp;break;
+        case 'G':shortcut=SpeedReset;break;
         case VK_OEM_PLUS:shortcut=IncreaseLyricText;break;
         case VK_ADD:shortcut=IncreaseLyricText;break;
         case VK_OEM_MINUS:shortcut=DecreaseLyricText;break;
