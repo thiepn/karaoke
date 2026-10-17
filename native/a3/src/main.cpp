@@ -14,6 +14,7 @@
 #include "desktop_ui.hpp"
 #include "device_recovery.hpp"
 #include "effect_controls.hpp"
+#include "lyric_sections.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <sstream>
@@ -905,6 +906,116 @@ int main(int argc,char** argv) {
                         rt.seekRequest.store(static_cast<std::uint64_t>(target)*48);
                         if(!ready)rt.songPosition.store(static_cast<std::uint64_t>(target)*48);
                         notice=L"Selected lyric seek queued without changing mic or music state.";
+                        break;
+                    }
+                    case Action::ChooseLyricSection:{
+                        if(!rt.mixer.hasSong()||!hasHandoff||rt.session.lines.empty()){
+                            notice=L"Import matching source-backed .rtk/.lrc lyrics to select a section.";break;
+                        }
+                        // The native modal owns input focus, so mute PAUSE
+                        // BEFORE opening it; F8 is also handled inside it.
+                        // Both dialogs and confirmation are cancellation-safe:
+                        // the prior A/B markers remain unchanged until commit.
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        const auto duration=static_cast<std::uint64_t>(rt.mixer.songFrames());
+                        const auto limit=static_cast<std::int64_t>(duration/48);
+                        const auto lyricFrame=[&](std::size_t index)->std::uint64_t{
+                            const auto at=std::clamp<std::int64_t>(
+                              static_cast<std::int64_t>(rt.session.lines[index].milliseconds)
+                                +rt.session.offsetMs,0,limit);
+                            return static_cast<std::uint64_t>(at)*48;
+                        };
+                        const auto rowFor=[&](std::size_t index){
+                            std::wstring row=L"Lyric "+std::to_wstring(index+1)+L" · "+
+                                roomtone::desktop::clock(static_cast<unsigned>(lyricFrame(index)/48000))+
+                                L" · "+roomtone::desktop::wide(rt.session.lines[index].text);
+                            if(row.size()>260)row.resize(260);
+                            return row;
+                        };
+                        std::vector<std::wstring> beginnings;
+                        beginnings.reserve(rt.session.lines.size());
+                        for(std::size_t i=0;i<rt.session.lines.size();++i)
+                            beginnings.push_back(rowFor(i));
+                        const auto ms=static_cast<std::uint32_t>(
+                            std::min<std::uint64_t>(rt.songPosition.load()/48,720000));
+                        const auto active=roomtone::lyricIndexAt(rt.session,ms);
+                        const auto chosenA=roomtone::desktop::selectQueuedSong(
+                            beginnings,active==rt.session.lines.size()?0:active,window.hwnd,
+                            [&]{rt.monitoring.store(false);},
+                            L"ROOMTONE | A-B section START",
+                            L"Choose the original lyric cue where A starts. Enter selects; Esc cancels; F8 mutes.",
+                            L"Choose A");
+                        if(!chosenA){
+                            notice=L"Lyric section canceled: prior A-B markers retained; playback PAUSED, voice MUTED.";
+                            break;
+                        }
+                        std::vector<std::wstring> endings;
+                        endings.reserve(rt.session.lines.size()-*chosenA);
+                        for(std::size_t i=*chosenA+1;i<rt.session.lines.size();++i)
+                            endings.push_back(rowFor(i));
+                        endings.push_back(L"Song end · "+
+                            roomtone::desktop::clock(static_cast<unsigned>(duration/48000)));
+                        const auto selectedEnd=roomtone::desktop::selectQueuedSong(
+                            endings,0,window.hwnd,[&]{rt.monitoring.store(false);},
+                            L"ROOMTONE | A-B section END",
+                            L"Choose a LATER authored lyric cue or song end. Enter selects; Esc cancels.",
+                            L"Choose B");
+                        if(!selectedEnd){
+                            notice=L"Lyric section canceled: original A-B markers retained; audio MUTED and PAUSED.";
+                            break;
+                        }
+                        const std::size_t endIndex=*chosenA+1+*selectedEnd;
+                        const auto range=roomtone::lyric_sections::choose(
+                            rt.session,*chosenA,endIndex,duration);
+                        if(!range){
+                            notice=L"Lyric cues overlap, collapse after offset or are <=0.25 s apart; old A-B retained.";
+                            break;
+                        }
+                        const auto preview=L"Set the original source's paused A-B section?\n\n"+
+                            std::wstring(L"A: lyric ")+std::to_wstring(*chosenA+1)+L" · "+
+                            roomtone::desktop::clock(static_cast<unsigned>(range->startFrame/48000))+
+                            L"\nB: "+(endIndex==rt.session.lines.size()
+                                ?L"song end":L"lyric "+std::to_wstring(endIndex+1))+
+                            L" · "+roomtone::desktop::clock(static_cast<unsigned>(range->endFrame/48000))+
+                            L"\n\nRepeat will remain OFF until explicitly enabled. "
+                            L"Voice MUTED and music PAUSED; no file changes.";
+                        if(MessageBoxW(window.hwnd,preview.c_str(),
+                            L"ROOMTONE | Confirm authored section",MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2)!=IDYES){
+                            notice=L"Section creation declined; original A-B markers unchanged; audio PAUSED.";
+                            break;
+                        }
+                        rt.abLoop.store(false);
+                        rt.abStart.store(static_cast<std::size_t>(range->startFrame));
+                        rt.abEnd.store(static_cast<std::size_t>(range->endFrame));
+                        rt.practiceStartMarked=true;
+                        rt.repeat.store(false);
+                        rt.abLoop.store(true);
+                        notice=L"Source-backed A-B section ready. Repeat OFF. Ctrl+8 seeks A; Ctrl+9 seeks B.";
+                        break;
+                    }
+                    case Action::SeekLoopA:case Action::SeekLoopB:{
+                        if(!rt.mixer.hasSong()){
+                            notice=L"No original song is loaded. Marker seek refused.";break;
+                        }
+                        const bool toB=action==Action::SeekLoopB;
+                        const auto selected=toB?rt.abEnd.load():rt.abStart.load();
+                        const auto cue=roomtone::lyric_sections::marker(selected,
+                            toB?rt.abLoop.load():rt.practiceStartMarked,
+                            rt.mixer.songFrames());
+                        if(!cue){
+                            notice=toB?L"No valid B marker: mark A and B first."
+                                :L"No A marker: set A or choose authored lyric section.";
+                            break;
+                        }
+                        // A focused owner action, NOT autoplay or a driver
+                        // restart. Preserve the original source and cached
+                        // per-song practice for later queue revisits.
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        rt.rewindRequest.store(false);
+                        rt.seekRequest.store(*cue);
+                        if(!ready)rt.songPosition.store(*cue);
+                        notice=toB?L"Paused at marker B; microphone MUTED."
+                            :L"Paused at marker A; microphone MUTED.";
                         break;
                     }
                     case Action::MarkLoopA:{
