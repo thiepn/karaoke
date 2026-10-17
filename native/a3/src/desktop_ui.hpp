@@ -15,6 +15,7 @@
 #include <stdexcept>
 #include <cstddef>
 #include <cstdint>
+#include "reading_view.hpp"
 
 namespace roomtone::desktop {
 // All Win32 window/UI callbacks run on the application's main/control thread.
@@ -36,7 +37,7 @@ enum Action {
   PreviousLine,BrowseLyrics,MarkLoopA,MarkLoopB,ClearAB,ToggleAB,OffsetEarlier,OffsetLater,OffsetReset,SaveSession,AddQueueSong,ShowQueue,NextQueueSong,PreviousQueueSong,
   RemoveQueuedSong,MoveQueuedUp,MoveQueuedDown,ClearPendingQueue,
   FeedbackDown,FeedbackUp,DelayShorter,DelayLonger,DryVoice,RestoreEffects,ShowEffects,ShowRecovery,
-  ChooseLyricSection,SeekLoopA,SeekLoopB
+  ChooseLyricSection,SeekLoopA,SeekLoopB,FocusLyrics,IncreaseLyricText,DecreaseLyricText
 };
 struct Snapshot {
  std::wstring title,previous,current,next,input,output,notice;
@@ -80,9 +81,12 @@ struct Window {
       status=nullptr,device=nullptr,notice=nullptr,seekLabel=nullptr,seekBar=nullptr;
  HWND buttons[22]{};
  HFONT minorFont=nullptr,regular=nullptr,large=nullptr,heading=nullptr;
+ HFONT lyricFonts[6]{};
  bool ready=false;
  bool syntheticTest=false;
  bool trackingSeek=false;
+ bool focusedLyrics=false;
+ int lyricScale=0;
  void applyFont(HWND h,HFONT f){if(h)SendMessageW(h,WM_SETFONT,reinterpret_cast<WPARAM>(f),TRUE);}
  HWND label(const wchar_t* value,DWORD flags,HFONT f) {
   auto h=CreateWindowExW(0,L"STATIC",value,WS_CHILD|WS_VISIBLE|flags,0,0,100,25,
@@ -102,6 +106,18 @@ struct Window {
   RECT bounds{};GetClientRect(hwnd,&bounds);
   const int w=std::max(570L,bounds.right-bounds.left);
   const int height=std::max(640L,bounds.bottom-bounds.top);
+  if(focusedLyrics){
+   const auto g=roomtone::reading_view::layout(w,height);
+   auto move=[&](HWND target,roomtone::reading_view::Rect r){
+    MoveWindow(target,r.x,r.y,r.width,r.height,TRUE);
+   };
+   move(title,g.title);move(previous,g.previous);move(current,g.current);
+   move(next,g.next);move(seekLabel,g.seekLabel);move(seekBar,g.seekBar);
+   move(status,g.status);move(buttons[0],g.play);
+   move(buttons[16],g.reconnect);move(buttons[17],g.mute);
+   move(notice,g.notice);
+   return;
+  }
   const int lyricExtra=std::clamp(height-650,0,140);
   const int pad=20,gap=8;
   MoveWindow(title,pad,8,w-2*pad,27,TRUE);
@@ -126,11 +142,29 @@ struct Window {
   MoveWindow(device,pad,551+lyricExtra,w-2*pad,30,TRUE);
   MoveWindow(notice,pad,585+lyricExtra,w-2*pad,56,TRUE);
  }
+ void updateReadingView(){
+   if(!hwnd)return;
+   const HFONT face=lyricFonts[(focusedLyrics?3:0)+std::clamp(lyricScale,0,2)];
+   applyFont(current,face?face:large);
+   for(int i=0;i<22;++i){
+    const bool show=!focusedLyrics||i==0||i==16||i==17;
+    ShowWindow(buttons[i],show?SW_SHOW:SW_HIDE);
+   }
+   ShowWindow(device,focusedLyrics?SW_HIDE:SW_SHOW);
+   const HWND focused=GetFocus();
+   if(focusedLyrics&&focused&&IsChild(hwnd,focused)&&!IsWindowVisible(focused))
+    SetFocus(seekBar);
+   if(HMENU menu=GetMenu(hwnd))
+    CheckMenuItem(menu,FocusLyrics,MF_BYCOMMAND|(focusedLyrics?MF_CHECKED:MF_UNCHECKED));
+   layout();render();
+  }
  void render() {
   if(!controller.snapshot)return;
   const auto s=controller.snapshot();
   setText(title,s.title.empty()?L"ROOMTONE / NATIVE KARAOKE":s.title);
-  std::wstring practiceNote=L"Position (slider arrows / Home / End) · Practice menu";
+  std::wstring practiceNote=focusedLyrics
+    ?L"FOCUS LYRICS · Ctrl+F normal view · Ctrl +/- text · F8 mute"
+    :L"Position (slider arrows / Home / End) · Practice menu";
   if(s.loopMarked){
    practiceNote=L"A "+clock(static_cast<unsigned>(s.loopA/48000))+
       L" · B "+clock(static_cast<unsigned>(s.loopB/48000))+
@@ -175,8 +209,13 @@ struct Window {
    EnableWindow(buttons[21],s.hasSong&&s.hasLyrics);
  }
  void notify(Action action){
-  if(controller.action)controller.action(action);
-  render();
+   if(action==FocusLyrics){focusedLyrics=!focusedLyrics;updateReadingView();return;}
+   if(action==IncreaseLyricText||action==DecreaseLyricText){
+    lyricScale=std::clamp(lyricScale+(action==IncreaseLyricText?1:-1),0,2);
+    updateReadingView();return;
+   }
+   if(controller.action)controller.action(action);
+   render();
  }
  static LRESULT CALLBACK proc(HWND h,UINT message,WPARAM w,LPARAM l){
   auto* self=reinterpret_cast<Window*>(GetWindowLongPtrW(h,GWLP_USERDATA));
@@ -192,7 +231,9 @@ struct Window {
    case WM_CREATE:{
     self->minorFont=font(17);self->regular=font(17);self->large=font(30,true);
     self->heading=font(25,true);
-   HMENU menubar=CreateMenu(),practiceMenu=CreatePopupMenu(),songMenu=CreatePopupMenu(),effectsMenu=CreatePopupMenu(),recoveryMenu=CreatePopupMenu();
+    for(int i=0;i<6;++i)
+     self->lyricFonts[i]=font(roomtone::reading_view::fontSize(i>=3,i%3),true);
+   HMENU menubar=CreateMenu(),practiceMenu=CreatePopupMenu(),songMenu=CreatePopupMenu(),effectsMenu=CreatePopupMenu(),recoveryMenu=CreatePopupMenu(),viewMenu=CreatePopupMenu();
    if(menubar&&practiceMenu){
     const struct Entry {Action action;const wchar_t* title;} entries[]={
      {MarkLoopA,L"Mark loop start A\tCtrl+1"},
@@ -239,12 +280,19 @@ struct Window {
      AppendMenuW(recoveryMenu,MF_STRING,EmergencyMute,L"VOICE MUTE (focused window)\tF8");
      AppendMenuW(menubar,MF_POPUP,reinterpret_cast<UINT_PTR>(recoveryMenu),L"&Audio");
     }
+    if(viewMenu){
+      AppendMenuW(viewMenu,MF_STRING,FocusLyrics,L"Large-lyric focus view (toggle)\tCtrl+F");
+      AppendMenuW(viewMenu,MF_STRING,IncreaseLyricText,L"Enlarge current lyric\tCtrl++");
+      AppendMenuW(viewMenu,MF_STRING,DecreaseLyricText,L"Reduce current lyric\tCtrl+-");
+      AppendMenuW(menubar,MF_POPUP,reinterpret_cast<UINT_PTR>(viewMenu),L"&View");
+     }
     SetMenu(h,menubar);
    }else{
     if(practiceMenu)DestroyMenu(practiceMenu);
     if(songMenu)DestroyMenu(songMenu);
     if(effectsMenu)DestroyMenu(effectsMenu);
     if(recoveryMenu)DestroyMenu(recoveryMenu);
+    if(viewMenu)DestroyMenu(viewMenu);
     if(menubar)DestroyMenu(menubar);
    }
     self->title=self->label(L"ROOMTONE",SS_LEFT,self->heading);
@@ -302,6 +350,9 @@ struct Window {
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::ChooseLyricSection,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::SeekLoopA,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::SeekLoopB,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::FocusLyrics,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::IncreaseLyricText,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::DecreaseLyricText,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::Play,BN_CLICKED),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::EmergencyMute,BN_CLICKED),0);
         PostMessageW(h,WM_CLOSE,0,0);
@@ -344,7 +395,7 @@ struct Window {
     else if(w==VK_F10)self->notify(Play);
     return 0;
    case WM_COMMAND:
-    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=149)
+    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=152)
      self->notify(static_cast<Action>(LOWORD(w)));
     return 0;
    case WM_CLOSE:
@@ -402,6 +453,11 @@ struct Window {
         case '7':shortcut=ChooseLyricSection;break;
         case '8':shortcut=SeekLoopA;break;
         case '9':shortcut=SeekLoopB;break;
+        case 'F':shortcut=FocusLyrics;break;
+        case VK_OEM_PLUS:shortcut=IncreaseLyricText;break;
+        case VK_ADD:shortcut=IncreaseLyricText;break;
+        case VK_OEM_MINUS:shortcut=DecreaseLyricText;break;
+        case VK_SUBTRACT:shortcut=DecreaseLyricText;break;
         case 'E':shortcut=ShowEffects;break;
         case 'H':shortcut=ShowRecovery;break;
        case VK_OEM_4:shortcut=OffsetEarlier;break;
@@ -413,6 +469,8 @@ struct Window {
    }
    if(!IsDialogMessageW(hwnd,&m)){TranslateMessage(&m);DispatchMessageW(&m);}
   }
+  applyFont(current,static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT)));
+  for(auto& typeface:lyricFonts){if(typeface){DeleteObject(typeface);typeface=nullptr;}}
   DeleteObject(minorFont);DeleteObject(regular);DeleteObject(large);DeleteObject(heading);
   return static_cast<int>(m.wParam);
  }
