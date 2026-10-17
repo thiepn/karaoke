@@ -889,6 +889,24 @@ int main(int argc,char** argv) {
                         }
                         if(loaded.audioName!=selectedSongFile)
                             throw std::runtime_error("Session filename must match selected original instrumental");
+                        // Deliberate confirmation precedes any replacement of
+                        // source-owned lyrics, saved A-B practice or playhead.
+                        // For .lrc, the filename match was assigned locally
+                        // and is NOT independent evidence of a matching song.
+                        const auto preview=std::wstring(L"Current instrumental: ")+
+                            roomtone::desktop::wide(selectedSongFile)+
+                            L"\nSelected title: "+roomtone::desktop::wide(loaded.title)+
+                            L"\nTimed lines: "+std::to_wstring(loaded.lines.size())+
+                            L"\nLyric offset: "+std::to_wstring(loaded.offsetMs)+L" ms"+
+                            (directLrc
+                              ?L"\n\nLRC lyrics do not prove the song matches; existing position and practice loop will remain."
+                              :L"\n\nSession will restore its saved position and loop.")+
+                            L"\n\nReplace current lyrics? Voice and music remain muted.";
+                        if(MessageBoxW(window.hwnd,preview.c_str(),L"ROOMTONE | Import preview",
+                             MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2)!=IDYES){
+                            notice=L"Import canceled; previous lyrics and song position retained. Voice MUTED.";
+                            break;
+                        }
                         safeStop();
                         rt.session=loaded;hasHandoff=true;rt.repeat.store(loaded.loop);
                         importedLyricOffset=loaded.offsetMs;

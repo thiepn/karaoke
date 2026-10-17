@@ -60,7 +60,9 @@ inline Handoff snapshot(const Handoff& source,const std::string& audioFilename,
  h.loop=useLoop;
  if(useLoop){
   h.loopStartMs=static_cast<std::uint32_t>(loopStartFrames/rate);
-  h.loopEndMs=static_cast<std::uint32_t>(loopEndFrames/rate);
+  // Ceiling the end timestamp avoids losing a just-over-250ms A-B
+  // interval when framing to integer milliseconds in .rtk V1.
+  h.loopEndMs=static_cast<std::uint32_t>((loopEndFrames+rate-1)/rate);
  }else{
   // Preserve whole-track repeat as ROOMTONE_HANDOFF_V1 loop semantics.
   // The source contract has no separate whole-track repeat field, so

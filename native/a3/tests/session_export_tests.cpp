@@ -30,6 +30,12 @@ int main(){
  require(parsed.lines.size()==2&&parsed.lines[1].text==source.lines[1].text,
      "source lyric timestamps and multibyte UTF-8");
  require(session_export::encode(parsed)==serialized,"roundtrip format canonical");
+ // The source range is >250ms by ONE frame, but naïve millisecond floor
+ // would turn it into exactly 250ms and make the exported V1 file invalid.
+ auto edge=session_export::snapshot(source,"Neue Datei.wav","Other",0,240000,
+     true,48001,60002,true);
+ require(edge.loop&&edge.loopStartMs==1000&&edge.loopEndMs==1251,
+     "submillisecond valid A-B boundary survives roundtrip");
  auto noLoop=session_export::snapshot(source,"Neue Datei.wav","Fallback",999999,240000,
       true,0,0,false);
  require(noLoop.startMs==5000&&!noLoop.loop&&noLoop.loopStartMs==0&&
