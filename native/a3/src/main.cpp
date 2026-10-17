@@ -672,6 +672,23 @@ int main(int argc,char** argv) {
                     throw std::runtime_error("Queue changed during owner-selected transition");
             };
             roomtone::desktop::Window window;
+            const auto chooseQueueEntry=[&](const wchar_t* operation)->std::optional<std::size_t>{
+                if(songQueue.size()==0)return std::nullopt;
+                rt.monitoring.store(false);rt.musicPlaying.store(false);
+                std::vector<std::wstring> labels;labels.reserve(songQueue.size());
+                for(std::size_t i=0;i<songQueue.size();++i){
+                    std::wstring row=std::to_wstring(i+1)+L".  "+
+                        roomtone::desktop::wide(songQueue.at(i).filename().u8string());
+                    if(i==songQueue.currentIndex())row+=L"  [CURRENT]";
+                    else if(songQueue.practice(i))row+=L"  [SAVED PRACTICE]";
+                    labels.push_back(std::move(row));
+                }
+                auto selected=roomtone::desktop::selectQueuedSong(
+                    labels,songQueue.currentIndex(),window.hwnd,
+                    [&]{rt.monitoring.store(false);notice=L"VOICE MUTED (F8) in song queue.";});
+                if(!selected)notice=std::wstring(operation)+L" canceled; previous queue retained; audio muted.";
+                return selected;
+            };
             window.controller.deviceChanged=[&]{deviceTopologyDirty=true;};
             window.controller.maintenance=[&]{
                 // WASAPI notifications and WM_DEVICECHANGE only signal.
@@ -984,23 +1001,51 @@ int main(int argc,char** argv) {
                     }
                     case Action::ShowQueue:{
                         if(songQueue.size()==0){notice=L"Queue empty. Add a local song first.";break;}
+                        const auto chosen=chooseQueueEntry(L"Song selection");
+                        if(chosen)activateQueueIndex(*chosen);
+                        break;
+                    }
+                    case Action::MoveQueuedUp:case Action::MoveQueuedDown:{
+                        if(songQueue.size()<2){notice=L"Add two songs before reordering.";break;}
+                        const auto chosen=chooseQueueEntry(L"Reorder");
+                        if(!chosen)break;
+                        const bool moved=songQueue.move(*chosen,
+                            action==Action::MoveQueuedUp?-1:1);
+                        notice=moved?L"Queue order updated in memory; current PCM/lyrics unchanged."
+                           :L"Already at queue boundary; nothing moved.";
+                        break;
+                    }
+                    case Action::RemoveQueuedSong:{
+                        if(songQueue.size()<2){notice=L"Only current song remains; no removal.";break;}
+                        const auto chosen=chooseQueueEntry(L"Removal");
+                        if(!chosen)break;
+                        if(*chosen==songQueue.currentIndex()){
+                            notice=L"Cannot remove current song. Select another original song first.";break;
+                        }
+                        const auto label=roomtone::desktop::wide(songQueue.at(*chosen).filename().u8string());
+                        const auto question=L"Remove this queued entry and its in-memory practice?\n"+label+
+                            L"\n\nNo local music/lyrics files will be deleted.";
+                        if(MessageBoxW(window.hwnd,question.c_str(),L"ROOMTONE | Remove pending song",
+                             MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2)!=IDYES){
+                            notice=L"Removal canceled. Current song and queue unchanged.";break;
+                        }
+                        if(!songQueue.remove(*chosen))throw std::runtime_error("Could not remove inactive queued song");
+                        notice=L"Pending song removed in memory; files on disk untouched.";
+                        break;
+                    }
+                    case Action::ClearPendingQueue:{
+                        if(songQueue.size()<2){notice=L"No pending queued songs to clear.";break;}
                         rt.monitoring.store(false);rt.musicPlaying.store(false);
-                        std::vector<std::wstring> labels;
-                        labels.reserve(songQueue.size());
-                        for(std::size_t i=0;i<songQueue.size();++i){
-                            labels.push_back(std::to_wstring(i+1)+L".  "+
-                                roomtone::desktop::wide(songQueue.at(i).filename().u8string())+
-                                (i==songQueue.currentIndex()?L"  [CURRENT]":L""));
+                        if(MessageBoxW(window.hwnd,
+                          L"Remove ALL queued songs except the current original track?\n"
+                          L"In-memory snapshots for pending songs will be discarded. No files are deleted.",
+                          L"ROOMTONE | Clear pending queue",
+                          MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2)!=IDYES){
+                           notice=L"Queue clear canceled; current song retained.";break;
                         }
-                        const auto chosen=roomtone::desktop::selectQueuedSong(
-                            labels,songQueue.currentIndex(),window.hwnd,
-                            [&]{rt.monitoring.store(false);
-                                notice=L"VOICE MUTED (F8) while choosing queued song.";});
-                        if(!chosen){
-                            notice=L"Queue selection canceled. Existing song and progress retained; voice/music muted.";
-                            break;
-                        }
-                        activateQueueIndex(*chosen);
+                        const auto dropped=songQueue.clearPending();
+                        notice=L"Cleared "+std::to_wstring(dropped)+
+                            L" pending song(s). Current source and practice remain.";
                         break;
                     }
                     case Action::ChooseSession:{
