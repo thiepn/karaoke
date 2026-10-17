@@ -1031,7 +1031,8 @@ int main(int argc,char** argv) {
                         for(const auto& name:candidateOutputs)outputLabels.push_back(roomtone::desktop::wide(name));
                         const auto choice=roomtone::desktop::selectDevices(inputLabels,outputLabels,window.hwnd,
                             roomtone::device_policy::chooserIndex(inputName,candidateInputs),
-                            roomtone::device_policy::chooserIndex(outputName,candidateOutputs));
+                            roomtone::device_policy::chooserIndex(outputName,candidateOutputs),
+                            [&]{rt.monitoring.store(false);notice=L"VOICE MUTED (F8) while selecting devices.";});
                         if(choice){
                             std::string nextInput=inputName,nextOutput=outputName;
                             if(!roomtone::device_policy::selectedName(choice->first,candidateInputs,nextInput)||

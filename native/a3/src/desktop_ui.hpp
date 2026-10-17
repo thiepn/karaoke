@@ -372,7 +372,8 @@ struct DeviceChooser{
  int inputChoice=-1,outputChoice=-1;
  int initiallySelectedInput=-1,initiallySelectedOutput=-1; // -2 means missing/ambiguous
  HWND owner=nullptr;
- bool approved=false,syntheticCancel=false;
+ bool approved=false,syntheticCancel=false,syntheticMute=false;
+  std::function<void()> emergencyMute; // focused chooser only
  static LRESULT CALLBACK proc(HWND h,UINT msg,WPARAM w,LPARAM l){
   auto* self=reinterpret_cast<DeviceChooser*>(GetWindowLongPtrW(h,GWLP_USERDATA));
   if(msg==WM_NCCREATE){
@@ -405,7 +406,8 @@ struct DeviceChooser{
     static_cast<WPARAM>(self->initiallySelectedOutput+1),0);
    create(L"BUTTON",L"Use devices",BS_DEFPUSHBUTTON|WS_TABSTOP,205,200,135,38,101);
    create(L"BUTTON",L"Cancel",BS_PUSHBUTTON|WS_TABSTOP,350,200,130,38,102);
-   if(self->syntheticCancel)PostMessageW(h,WM_CLOSE,0,0);
+   if(self->syntheticMute)PostMessageW(self->input,WM_KEYDOWN,VK_F8,0);
+    if(self->syntheticCancel)PostMessageW(h,WM_CLOSE,0,0);
    return 0;
   }
   if(msg==WM_COMMAND){
@@ -448,7 +450,12 @@ struct DeviceChooser{
     if(result==0)PostQuitMessage(static_cast<int>(msg.wParam));
     break;
    }
-   if(!IsDialogMessageW(hwnd,&msg)){TranslateMessage(&msg);DispatchMessageW(&msg);}
+   if(msg.message==WM_KEYDOWN&&msg.wParam==VK_F8&&
+       (msg.hwnd==hwnd||IsChild(hwnd,msg.hwnd))){
+      if(emergencyMute)emergencyMute();
+      continue;
+    }
+    if(!IsDialogMessageW(hwnd,&msg)){TranslateMessage(&msg);DispatchMessageW(&msg);}
   }
   if(disableOwner&&IsWindow(owner)){
    EnableWindow(owner,TRUE);SetForegroundWindow(owner);
@@ -573,9 +580,11 @@ inline std::optional<std::size_t> selectQueuedSong(
 }
 inline std::optional<std::pair<int,int>> selectDevices(
  const std::vector<std::wstring>& inputs,const std::vector<std::wstring>& outputs,
- HWND owner=nullptr,int initialInput=-1,int initialOutput=-1){
+ HWND owner=nullptr,int initialInput=-1,int initialOutput=-1,
+ std::function<void()> emergencyMute={}){
  DeviceChooser picker;picker.inputs=&inputs;picker.outputs=&outputs;picker.owner=owner;
  picker.initiallySelectedInput=initialInput;picker.initiallySelectedOutput=initialOutput;
+ picker.emergencyMute=std::move(emergencyMute);
  return picker.run();
 }
 }

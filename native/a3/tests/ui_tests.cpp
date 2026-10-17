@@ -8,7 +8,7 @@ int main(){
 #ifdef _WIN32
  try{
   roomtone::desktop::Window window;
-  unsigned snapshots=0,playEvents=0,muteEvents=0,seekEvents=0,lastSeek=0,topologyEvents=0,tickEvents=0,previousEvents=0,browseEvents=0,modalMuteEvents=0,loopEvents=0,offsetEvents=0,saveEvents=0;
+  unsigned snapshots=0,playEvents=0,muteEvents=0,seekEvents=0,lastSeek=0,topologyEvents=0,tickEvents=0,previousEvents=0,browseEvents=0,modalMuteEvents=0,deviceModalMuteEvents=0,queueModalMuteEvents=0,loopEvents=0,offsetEvents=0,saveEvents=0,queueActionEvents=0;
   window.syntheticTest=true;
   bool compactLayout=false;
   window.controller.snapshot=[&]{
@@ -35,6 +35,8 @@ int main(){
    if(action==roomtone::desktop::MarkLoopA)++loopEvents;
    if(action==roomtone::desktop::OffsetLater)++offsetEvents;
    if(action==roomtone::desktop::SaveSession)++saveEvents;
+   if(action==roomtone::desktop::AddQueueSong||action==roomtone::desktop::ShowQueue||
+      action==roomtone::desktop::NextQueueSong||action==roomtone::desktop::PreviousQueueSong)++queueActionEvents;
   };
   window.controller.seekSeconds=[&](unsigned sec){++seekEvents;lastSeek=sec;};
   window.controller.deviceChanged=[&]{++topologyEvents;};
@@ -45,7 +47,8 @@ int main(){
    const std::vector<std::wstring> input{L"Test input"},output{L"Test output"};
    picker.inputs=&input;picker.outputs=&output;
    picker.initiallySelectedInput=0;picker.initiallySelectedOutput=-2;
-   picker.syntheticCancel=true;
+   picker.syntheticMute=true;picker.syntheticCancel=true;
+   picker.emergencyMute=[&]{++deviceModalMuteEvents;};
    if(picker.run().has_value())throw std::runtime_error("Synthetic chooser cancellation accepted");
    MSG pending{};
    if(PeekMessageW(&pending,nullptr,WM_QUIT,WM_QUIT,PM_NOREMOVE))
@@ -92,8 +95,20 @@ int main(){
    }catch(...){DeleteFileW(file.c_str());throw;}
    if(!DeleteFileW(file.c_str()))throw std::runtime_error("Failed to remove temp session");
   }
+  // Owner-selected queue reuses native focused list and never starts audio.
+  {
+   roomtone::desktop::LyricChooser picker;
+   std::vector<std::wstring> localSongs{L"1. Original",L"2. Second"};
+   picker.rows=&localSongs;picker.current=0;
+   picker.dialogTitle=L"ROOMTONE | Local song queue";
+   picker.hintText=L"Choose an owner-selected local song. Enter selects; Esc cancels.";
+   picker.confirmText=L"Select song";
+   picker.syntheticMute=true;picker.syntheticCancel=true;
+   picker.emergencyMute=[&]{++queueModalMuteEvents;};
+   if(picker.run().has_value())throw std::runtime_error("Queue cancel changed current song");
+  }
   const int result=window.run();
-  if(result!=0||snapshots==0||playEvents!=1||muteEvents!=1||previousEvents!=1||browseEvents!=1||loopEvents!=1||offsetEvents!=1||saveEvents!=1||modalMuteEvents!=1||!compactLayout||topologyEvents<1||tickEvents==0||seekEvents!=1||lastSeek!=43)
+  if(result!=0||snapshots==0||playEvents!=1||muteEvents!=1||previousEvents!=1||browseEvents!=1||loopEvents!=1||offsetEvents!=1||saveEvents!=1||queueActionEvents!=4||deviceModalMuteEvents!=1||queueModalMuteEvents!=1||modalMuteEvents!=1||!compactLayout||topologyEvents<1||tickEvents==0||seekEvents!=1||lastSeek!=43)
    throw std::runtime_error("in-process control/seek message, modal lifetime and focus");
   if(roomtone::desktop::wide("Nacht \xC3\xBC""ber")!=L"Nacht \xFC""ber")
    throw std::runtime_error("UTF-8 lyric display decoding");
