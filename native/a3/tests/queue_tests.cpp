@@ -26,5 +26,35 @@ int main(){
  need(!list.add(std::filesystem::path{}),"empty path rejected");
  need(!list.reset(std::filesystem::path{}),"invalid reset retained");
  need(list.size()==Queue::MaxSongs,"reject no state loss");
+ roomtone::song_queue::Practice owner;
+ owner.frames=144000;owner.loopA=48000;owner.loopB=96000;
+ owner.repeat=true;owner.loopValid=true;owner.startMarked=true;
+ owner.hasSession=true;owner.session.audioName="one.wav";
+ owner.session.title="Owner source";
+ owner.session.offsetMs=-250;
+ owner.session.lines={{1000,"First"},{1500,"Second"}};
+ need(list.rememberCurrent(owner),"capture current path-owned practice");
+ need(!list.practice(1),"queued neighbor has no inherited practice");
+ need(list.commit(1),"switch to another owner path");
+ need(!list.practice(1),"same queue no cross-song content");
+ roomtone::song_queue::Practice wrong=owner;
+ need(!list.rememberCurrent(wrong),"mismatched audio identity not cached");
+ need(list.commit(0),"return to original");
+ auto recovered=list.practice(0);
+ need(recovered&&recovered->frames==144000&&recovered->session.lines.size()==2&&
+      recovered->session.offsetMs==-250&&recovered->repeat,"original source state recovered");
+ need(list.move(0,1)&&list.currentIndex()==1,"current entry reorder tracks identity");
+ need(list.at(1).filename()=="one.wav"&&list.practice(1)->frames==144000,
+      "reorder retains original source snapshot");
+ need(!list.remove(1)&&list.currentIndex()==1,"active source cannot be removed");
+ need(list.remove(0)&&list.currentIndex()==0,"earlier inactive removal updates current index");
+ need(list.at(0).filename()=="one.wav"&&list.practice(0)->session.audioName=="one.wav",
+      "remove cannot transfer practice ownership");
+ need(!list.move(0,-1)&&!list.move(0,5),"invalid reorder rejected");
+ const auto removed=list.clearPending();
+ need(removed==Queue::MaxSongs-2&&list.size()==1&&list.currentIndex()==0,
+      "clear pending keeps only active original source");
+ need(list.practice(0)->session.lines[0].text=="First","clear pending retains active state");
+ need(list.reset("fresh.wav")&&!list.practice(0),"explicit new queue destroys prior local practice");
  std::cout<<"PASS source-owned volatile native queue, owner transitions, bounds, duplicate rejection, no file writes.\n";
 }
