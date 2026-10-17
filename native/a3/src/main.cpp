@@ -485,6 +485,7 @@ int main(int argc,char** argv) {
         }
         ma_device device{};
         bool deviceActive=false;
+        bool ownerSuspended=false; // explicit local hold, never auto-reconnect on hotplug
         bool deviceTopologyDirty=false;
         std::wstring lastDeviceIssue;
         const auto startDevice=[&]()->bool{
@@ -766,6 +767,7 @@ int main(int argc,char** argv) {
                 view.durationSeconds=static_cast<unsigned>(rt.mixer.songFrames()/48000);
                 view.playing=rt.musicPlaying.load();view.microphone=rt.monitoring.load();
                 view.repeat=rt.repeat.load();view.interrupted=rt.interrupted.load();
+                view.ownerSuspended=ownerSuspended;
                 view.loopMarked=rt.abLoop.load();
                 view.loopEnabled=view.loopMarked&&view.repeat;
                 view.loopA=rt.abStart.load();view.loopB=rt.abEnd.load();
@@ -817,6 +819,16 @@ int main(int argc,char** argv) {
                         target.store(std::clamp(std::round((current+change)*100.0f)/100.0f,0.0f,maximum));
                     };
                     switch(action){
+                    case Action::SuspendAudio:{
+                        // A real owner-facing safe hold: stop AND JOIN the one
+                        // WASAPI callback, preserve latest pending seek and local
+                        // song/practice/queue, and release duplex endpoints.
+                        safeStop();rt.mixer.vocal.reset();
+                        ownerSuspended=true;
+                        notice=L"Owner suspended both audio paths and released the duplex device. "
+                               L"Playhead saved; reconnect requires separate approval.";
+                        break;
+                    }
                     case Action::EmergencyMute:
                         rt.monitoring.store(false);
                         notice=L"VOICE MUTED immediately. Use physical mute/power for acoustic feedback.";
@@ -1126,8 +1138,13 @@ int main(int argc,char** argv) {
                     }
                     case Action::ShowRecovery:{
                         rt.monitoring.store(false);rt.musicPlaying.store(false);
-                        const std::wstring phase=rt.interrupted.load()?L"INTERRUPTED":
-                            deviceActive?L"READY (muted)":L"OFFLINE (muted)";
+                        const auto health=roomtone::recovery::state(deviceActive,
+                            rt.interrupted.load(),ownerSuspended);
+                        const std::wstring phase=health==roomtone::recovery::DriverState::OwnerSuspended
+                            ?L"OWNER SUSPENDED (device released)"
+                            :health==roomtone::recovery::DriverState::Interrupted
+                                ?L"INTERRUPTED":health==roomtone::recovery::DriverState::Ready
+                                    ?L"READY (muted)":L"OFFLINE (muted)";
                         const std::wstring steps=
                             L"1. Physically mute microphone; use wired headphones at low volume.\n"
                             L"2. Verify Windows capture/playback device and USB connection.\n"
@@ -1183,7 +1200,33 @@ int main(int argc,char** argv) {
                         }catch(...){reopenIfReady();throw;}
                         break;
                     }
-                    case Action::Reconnect:safeStop();safeRestart();break;
+                    case Action::Reconnect:{
+                        // Ctrl+R is a REQUEST, not blanket permission to
+                        // reopen capture after an unknown USB/topology change.
+                        // A second explicit local YES is required; default NO.
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        const std::wstring prompt=
+                            L"Manually reopen the selected local WASAPI audio path?\n\n"
+                            L"Microphone: "+(inputName.empty()?L"Windows default":roomtone::desktop::wide(inputName))+
+                            L"\nSpeaker: "+(outputName.empty()?L"Windows default":roomtone::desktop::wide(outputName))+
+                            L"\nCurrent source position: "+std::to_wstring(rt.songPosition.load()/48000)+L" seconds"+
+                            L"\n\nPhysically mute microphone and reduce headphone/speaker volume first. "
+                            L"Device names and pinned endpoint identities will be rechecked; "
+                            L"same-name replacements require Audio > Choose devices. "
+                            L"Reconnected audio starts with VOICE MUTED and MUSIC PAUSED.\n\n"
+                            L"Physical safety has NOT been qualified. Continue?";
+                        const bool approved=MessageBoxW(window.hwnd,prompt.c_str(),
+                            L"ROOMTONE | Owner-approved recovery",
+                            MB_YESNO|MB_ICONWARNING|MB_DEFBUTTON2)==IDYES;
+                        if(!roomtone::recovery::ownerMayReconnect(approved)){
+                            notice=L"Reconnect canceled. No audio device opened; original source/position retained.";
+                            break;
+                        }
+                        safeStop();
+                        ownerSuspended=false;
+                        safeRestart(); // preserves pinned identities; no fallback
+                        break;
+                    }
                     case Action::ChooseSong:{
                         rt.monitoring.store(false);rt.musicPlaying.store(false);
                         const auto chosen=chooseSongFile();
@@ -1328,6 +1371,7 @@ int main(int argc,char** argv) {
                         break;
                     }
                     case Action::ChooseDevices:{
+                        const bool previouslyReady=deviceActive&&!rt.interrupted.load()&&!ownerSuspended;
                         safeStop();
                         ma_device_info *outs=nullptr,*ins=nullptr;
                         ma_uint32 no=0,ni=0;
@@ -1356,8 +1400,9 @@ int main(int argc,char** argv) {
                             std::string nextInput=inputName,nextOutput=outputName;
                             if(!roomtone::device_policy::selectedName(choice->first,candidateInputs,nextInput)||
                                !roomtone::device_policy::selectedName(choice->second,candidateOutputs,nextOutput)){
-                                notice=L"Device changed while selecting or name is ambiguous. Previous choice retained; voice muted.";
-                                safeRestart();break;
+                                notice=L"Device candidate rejected; old source/endpoint retained OFFLINE. "
+                                       L"Use explicit owner Reconnect or choose again.";
+                                break;
                             }
                             // The chooser can remain open during physical USB changes.
                             // Verify both snapshot IDs against a NEW enumeration before
@@ -1390,9 +1435,22 @@ int main(int argc,char** argv) {
                             // Only an explicitly approved and freshly revalidated
                             // selection may authorize different WASAPI endpoint IDs.
                             pinnedInputId.clear();pinnedOutputId.clear();
+                            // An explicitly chosen, freshly revalidated pair
+                            // authorizes exactly one muted connection attempt.
+                            ownerSuspended=false;
+                            if(roomtone::recovery::reopenAfterChooser(previouslyReady,
+                                   roomtone::recovery::DeviceChoice::Revalidated))
+                                safeRestart();
+                        }else{
+                            // Cancel is not authorization to resurrect an
+                            // earlier INTERRUPTED/OFFLINE/OWNER SUSPENDED route.
+                            if(roomtone::recovery::reopenAfterChooser(previouslyReady,
+                                   roomtone::recovery::DeviceChoice::Canceled))
+                                safeRestart();
+                            notice=previouslyReady
+                              ?L"Device chooser canceled. Original ready devices restored MUTED/PAUSED."
+                              :L"Device chooser canceled. Offline/held device NOT reopened; audio MUTED/PAUSED.";
                         }
-                        safeRestart();
-                        if(!choice)notice=L"Device chooser canceled; previous selection restored, both outputs muted.";
                         break;
                     }
                     }
