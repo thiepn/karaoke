@@ -20,6 +20,8 @@ add_executable(roomtone_a3_recovery_tests tests/recovery_tests.cpp)
 add_test(NAME native_device_recovery_policy COMMAND roomtone_a3_recovery_tests)
 add_executable(roomtone_a3_effect_controls_tests tests/effect_controls_tests.cpp)
 add_test(NAME native_original_effect_controls COMMAND roomtone_a3_effect_controls_tests)
+add_executable(roomtone_a3_lyric_sections_tests tests/lyric_sections_tests.cpp)
+add_test(NAME native_source_lyric_sections COMMAND roomtone_a3_lyric_sections_tests)
 
 # Windows-only experimental executable; existing browser code remains unchanged.
 if(WIN32)
