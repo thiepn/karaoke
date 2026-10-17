@@ -22,6 +22,8 @@ add_executable(roomtone_a3_effect_controls_tests tests/effect_controls_tests.cpp
 add_test(NAME native_original_effect_controls COMMAND roomtone_a3_effect_controls_tests)
 add_executable(roomtone_a3_lyric_sections_tests tests/lyric_sections_tests.cpp)
 add_test(NAME native_source_lyric_sections COMMAND roomtone_a3_lyric_sections_tests)
+add_executable(roomtone_a3_reading_view_tests tests/reading_view_tests.cpp)
+add_test(NAME native_accessible_reading_layout COMMAND roomtone_a3_reading_view_tests)
 
 # Windows-only experimental executable; existing browser code remains unchanged.
 if(WIN32)
