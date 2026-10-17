@@ -76,3 +76,12 @@ Inspect the native import confirmation summary (original filename, title, lyric 
 3. While interrupted or unplugged, select a queued song: decoding and song selection can complete offline, but the driver must not reconnect/unmute without explicit owner action. On manual Reconnect, confirm the selected song opens paused and muted with its correct source ID.
 4. Check 1366×768 high-DPI native window and screen reader focus in Songs menu/queue selector. Ensure queue basenames are visible and private absolute paths never appear. The queue is intentionally forgotten at application exit; a previously saved .rtk is independent of the volatile queue.
 5. Test USB hotplug during device and queue modals and manually verify QuadCast/Pebble vocal timing, feedback and 5-minute stability. None of this is evidenced by synthetic CI. Release stays NO GO.
+
+## Per-song native practice and queue management — owner acceptance (NOT_TESTED)
+
+1. Using wired headphones with physical microphone muted, add two source songs and give each distinct .rtk/.lrc lyrics, offset and A–B position. Manually switch between them, ensuring only the correct source-owned lyrics, offsets, playhead and loop return. Both playback paths must remain muted/paused after each change.
+2. Add same-named files from different directories: verify practice never crosses distinct local full paths. Replace a selected audio file on disk with different content/size/modified timestamp, then revisit; stale practice must NOT be restored.
+3. Use Songs > Move entry up/down, Remove inactive entry and Clear pending. Verify index updates, current PCM remaining loaded, cancel handling, explicit destructive-in-memory confirmation, no disk files deleted and no automatic microphone activation.
+4. Select a now-unavailable queued file and confirm it fails before replacing the currently loaded PCM, saved lyrics or queue index. Restore the source and retry explicitly.
+5. Repeat with real USB unplug/reroute and check the interrupted device is never revived without owner Reconnect. Verify focused F8 across queued-song/lyric/device dialogs, keyboard navigation, installed screen reader and high-DPI 1366×768 controls.
+6. Measure actual QuadCast/Pebble latency, acoustic feedback behavior, extended dropouts and browser U21 recording by hand. Synthetic CI cannot qualify these; A4 physical gate remains NO GO.
