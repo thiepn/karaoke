@@ -37,7 +37,7 @@ enum Action {
   PreviousLine,BrowseLyrics,MarkLoopA,MarkLoopB,ClearAB,ToggleAB,OffsetEarlier,OffsetLater,OffsetReset,SaveSession,AddQueueSong,ShowQueue,NextQueueSong,PreviousQueueSong,
   RemoveQueuedSong,MoveQueuedUp,MoveQueuedDown,ClearPendingQueue,
   FeedbackDown,FeedbackUp,DelayShorter,DelayLonger,DryVoice,RestoreEffects,ShowEffects,ShowRecovery,
-  ChooseLyricSection,SeekLoopA,SeekLoopB,FocusLyrics,IncreaseLyricText,DecreaseLyricText
+  ChooseLyricSection,SeekLoopA,SeekLoopB,FocusLyrics,IncreaseLyricText,DecreaseLyricText,SuspendAudio
 };
 struct Snapshot {
  std::wstring title,previous,current,next,input,output,notice;
@@ -48,7 +48,7 @@ struct Snapshot {
  std::size_t queueIndex=0,queueTotal=0;
  float reverb=0,echo=0,music=0,gain=0,feedback=0;
  unsigned delayMs=280;
- bool playing=false,microphone=false,repeat=false,interrupted=false,deviceActive=false,hasSong=false,hasLyrics=false;
+ bool playing=false,microphone=false,repeat=false,interrupted=false,ownerSuspended=false,deviceActive=false,hasSong=false,hasLyrics=false;
 };
 struct Controller {
  std::function<Snapshot()> snapshot;
@@ -184,7 +184,7 @@ struct Window {
     SendMessageW(seekBar,TBM_SETPOS,TRUE,std::min<unsigned>(s.positionSeconds,limit));
    EnableWindow(seekBar,s.hasSong); // owner queues offline seeks across reconnect
   }
-  auto state=s.interrupted?L"INTERRUPTED":s.deviceActive?L"READY":L"DEVICE STOPPED";
+  auto state=s.ownerSuspended?L"OWNER SUSPENDED":s.interrupted?L"INTERRUPTED":s.deviceActive?L"READY":L"DEVICE STOPPED";
   setText(status,clock(s.positionSeconds)+L" / "+clock(s.durationSeconds)
       +L"  |  "+state+L"  |  Voice "+(s.microphone?L"ON":L"MUTED")
       +L"  |  Music "+(s.playing?L"PLAYING":L"PAUSED")+
@@ -278,6 +278,7 @@ struct Window {
      AppendMenuW(recoveryMenu,MF_STRING,ShowRecovery,L"Device health / recovery steps\tCtrl+H");
      AppendMenuW(recoveryMenu,MF_STRING,ChooseDevices,L"Choose microphone / output\tCtrl+D");
      AppendMenuW(recoveryMenu,MF_STRING,Reconnect,L"Owner reconnect (muted)\tCtrl+R");
+     AppendMenuW(recoveryMenu,MF_STRING,SuspendAudio,L"Stop duplex audio; retain playhead\tF7 / Ctrl+U");
      AppendMenuW(recoveryMenu,MF_STRING,EmergencyMute,L"VOICE MUTE (focused window)\tF8");
      AppendMenuW(menubar,MF_POPUP,reinterpret_cast<UINT_PTR>(recoveryMenu),L"&Audio");
     }
@@ -354,6 +355,7 @@ struct Window {
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::FocusLyrics,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::IncreaseLyricText,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::DecreaseLyricText,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::SuspendAudio,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::Play,BN_CLICKED),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::EmergencyMute,BN_CLICKED),0);
         PostMessageW(h,WM_CLOSE,0,0);
@@ -391,12 +393,13 @@ struct Window {
      return DefWindowProcW(h,message,w,l);
    case WM_KEYDOWN:
     // Local to the focused karaoke window; never intercept other apps' F keys.
-    if(w==VK_F8)self->notify(EmergencyMute);
+    if(w==VK_F7)self->notify(SuspendAudio);
+    else if(w==VK_F8)self->notify(EmergencyMute);
     else if(w==VK_F9)self->notify(Mic);
     else if(w==VK_F10)self->notify(Play);
     return 0;
    case WM_COMMAND:
-    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=152)
+    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=153)
      self->notify(static_cast<Action>(LOWORD(w)));
     return 0;
    case WM_CLOSE:
@@ -426,6 +429,7 @@ struct Window {
   while(GetMessageW(&m,nullptr,0,0)>0){
    // Non-global keys work even while a child button has keyboard focus.
    if((m.hwnd==hwnd||IsChild(hwnd,m.hwnd))&&m.message==WM_KEYDOWN){
+    if(m.wParam==VK_F7){notify(SuspendAudio);continue;}
     if(m.wParam==VK_F8){notify(EmergencyMute);continue;}
     if(m.wParam==VK_F9){notify(Mic);continue;}
     if(m.wParam==VK_F10){notify(Play);continue;}
@@ -455,6 +459,7 @@ struct Window {
         case '8':shortcut=SeekLoopA;break;
         case '9':shortcut=SeekLoopB;break;
         case 'F':shortcut=FocusLyrics;break;
+        case 'U':shortcut=SuspendAudio;break;
         case VK_OEM_PLUS:shortcut=IncreaseLyricText;break;
         case VK_ADD:shortcut=IncreaseLyricText;break;
         case VK_OEM_MINUS:shortcut=DecreaseLyricText;break;
