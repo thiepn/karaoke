@@ -37,7 +37,7 @@ enum Action {
   PreviousLine,BrowseLyrics,MarkLoopA,MarkLoopB,ClearAB,ToggleAB,OffsetEarlier,OffsetLater,OffsetReset,SaveSession,AddQueueSong,ShowQueue,NextQueueSong,PreviousQueueSong,
   RemoveQueuedSong,MoveQueuedUp,MoveQueuedDown,ClearPendingQueue,
   FeedbackDown,FeedbackUp,DelayShorter,DelayLonger,DryVoice,RestoreEffects,ShowEffects,ShowRecovery,
-  ChooseLyricSection,SeekLoopA,SeekLoopB,FocusLyrics,IncreaseLyricText,DecreaseLyricText,SuspendAudio
+  ChooseLyricSection,SeekLoopA,SeekLoopB,FocusLyrics,IncreaseLyricText,DecreaseLyricText,SuspendAudio,ShowSignals
 };
 struct Snapshot {
  std::wstring title,previous,current,next,input,output,notice;
@@ -276,6 +276,7 @@ struct Window {
     }
     if(recoveryMenu){
      AppendMenuW(recoveryMenu,MF_STRING,ShowRecovery,L"Device health / recovery steps\tCtrl+H");
+     AppendMenuW(recoveryMenu,MF_STRING,ShowSignals,L"Live local signal check (no recording)\tCtrl+M");
      AppendMenuW(recoveryMenu,MF_STRING,ChooseDevices,L"Choose microphone / output\tCtrl+D");
      AppendMenuW(recoveryMenu,MF_STRING,Reconnect,L"Owner reconnect (muted)\tCtrl+R");
      AppendMenuW(recoveryMenu,MF_STRING,SuspendAudio,L"Stop duplex audio; retain playhead\tF7 / Ctrl+U");
@@ -349,6 +350,7 @@ struct Window {
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::RestoreEffects,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::ShowEffects,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::ShowRecovery,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::ShowSignals,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::ChooseLyricSection,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::SeekLoopA,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::SeekLoopB,0),0);
@@ -400,7 +402,7 @@ struct Window {
     else if(w==VK_F10)self->notify(Play);
     return 0;
    case WM_COMMAND:
-    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=153)
+    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=154)
      self->notify(static_cast<Action>(LOWORD(w)));
     return 0;
    case WM_CLOSE:
@@ -461,6 +463,7 @@ struct Window {
         case '9':shortcut=SeekLoopB;break;
         case 'F':shortcut=FocusLyrics;break;
         case 'U':shortcut=SuspendAudio;break;
+        case 'M':shortcut=ShowSignals;break;
         case VK_OEM_PLUS:shortcut=IncreaseLyricText;break;
         case VK_ADD:shortcut=IncreaseLyricText;break;
         case VK_OEM_MINUS:shortcut=DecreaseLyricText;break;
@@ -480,6 +483,107 @@ struct Window {
   for(auto& typeface:lyricFonts){if(typeface){DeleteObject(typeface);typeface=nullptr;}}
   DeleteObject(minorFont);DeleteObject(regular);DeleteObject(large);DeleteObject(heading);
   return static_cast<int>(m.wParam);
+ }
+};
+// Native, owner-local read-only signal inspection. Only numeric transient peaks
+// from the ORIGINAL WASAPI callback are shown; never buffers/records/syncs PCM.
+// F7 and F8 are handled inside this modal, because its parent is disabled.
+struct SignalInspector {
+ HWND owner=nullptr,hwnd=nullptr,readoutLabel=nullptr;
+ HFONT body=nullptr;
+ std::function<std::wstring()> readout;
+ std::function<void()> emergencyMute,suspendDuplex;
+ bool synthetic=false,observedReadout=false;
+ static LRESULT CALLBACK proc(HWND h,UINT message,WPARAM w,LPARAM l) {
+  auto* self=reinterpret_cast<SignalInspector*>(GetWindowLongPtrW(h,GWLP_USERDATA));
+  if(message==WM_NCCREATE){
+   self=static_cast<SignalInspector*>(reinterpret_cast<CREATESTRUCTW*>(l)->lpCreateParams);
+   self->hwnd=h;SetWindowLongPtrW(h,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(self));
+   return TRUE;
+  }
+  if(!self)return DefWindowProcW(h,message,w,l);
+  switch(message){
+   case WM_CREATE:{
+    self->body=font(19);
+    self->readoutLabel=CreateWindowExW(0,L"STATIC",L"Reading original duplex callback...",
+       WS_CHILD|WS_VISIBLE|SS_LEFT,20,22,592,163,h,nullptr,GetModuleHandleW(nullptr),nullptr);
+    SendMessageW(self->readoutLabel,WM_SETFONT,reinterpret_cast<WPARAM>(self->body),TRUE);
+    auto create=[&](const wchar_t* text,int x,int width,int id){
+     HWND button=CreateWindowExW(0,L"BUTTON",text,
+       WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_PUSHBUTTON,x,246,width,40,
+       h,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),GetModuleHandleW(nullptr),nullptr);
+     SendMessageW(button,WM_SETFONT,reinterpret_cast<WPARAM>(self->body),TRUE);
+    };
+    CreateWindowExW(0,L"STATIC",
+       L"Input is observed even when monitoring is muted. Digital peaks are NOT acoustic volume, feedback detection or latency.",
+       WS_CHILD|WS_VISIBLE|SS_LEFT,20,191,592,44,h,nullptr,GetModuleHandleW(nullptr),nullptr);
+    create(L"MUTE VOICE (F8)",20,183,401);
+    create(L"STOP DUPLEX (F7)",213,191,402);
+    create(L"Close (Esc)",415,194,403);
+    SetTimer(h,1,400,nullptr);
+    self->refresh();
+    if(self->synthetic){
+     PostMessageW(self->readoutLabel,WM_KEYDOWN,VK_F8,0);
+     PostMessageW(self->readoutLabel,WM_KEYDOWN,VK_F7,0);
+     PostMessageW(h,WM_CLOSE,0,0);
+    }
+    return 0;
+   }
+   case WM_TIMER:
+    if(w==1)self->refresh();
+    return 0;
+   case WM_COMMAND:
+    if(LOWORD(w)==401&&self->emergencyMute)self->emergencyMute();
+    else if(LOWORD(w)==402&&self->suspendDuplex)self->suspendDuplex();
+    else if(LOWORD(w)==403)DestroyWindow(h);
+    return 0;
+   case WM_CLOSE:DestroyWindow(h);return 0;
+   case WM_DESTROY:
+    KillTimer(h,1);if(self->body)DeleteObject(self->body);
+    self->body=nullptr;self->hwnd=nullptr;
+    return 0;
+  }
+  return DefWindowProcW(h,message,w,l);
+ }
+ void refresh(){
+  if(!readoutLabel||!readout)return;
+  const auto text=readout();
+  observedReadout=observedReadout||!text.empty();
+  setText(readoutLabel,text); // no identical-text screen-reader notification
+ }
+ void run(){
+  const wchar_t* clsName=L"ROOMTONE Local Signal Check";
+  WNDCLASSEXW cls{};cls.cbSize=sizeof(cls);cls.lpfnWndProc=proc;
+  cls.hInstance=GetModuleHandleW(nullptr);cls.lpszClassName=clsName;
+  cls.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);
+  cls.hCursor=LoadCursorW(nullptr,MAKEINTRESOURCEW(32512));
+  RegisterClassExW(&cls);
+  const bool ownerEnabled=owner&&IsWindow(owner)&&IsWindowEnabled(owner);
+  const HWND oldFocus=ownerEnabled?GetFocus():nullptr;
+  if(ownerEnabled)EnableWindow(owner,FALSE);
+  hwnd=CreateWindowExW(WS_EX_DLGMODALFRAME,clsName,L"ROOMTONE | Private live signal check",
+    WS_CAPTION|WS_SYSMENU|WS_VISIBLE,CW_USEDEFAULT,CW_USEDEFAULT,655,343,
+    owner,nullptr,cls.hInstance,this);
+  if(!hwnd){
+   if(ownerEnabled)EnableWindow(owner,TRUE);
+   throw std::runtime_error("Local signal check window could not open");
+  }
+  MSG msg{};
+  while(hwnd&&IsWindow(hwnd)){
+   const auto result=GetMessageW(&msg,nullptr,0,0);
+   if(result<=0){if(result==0)PostQuitMessage(static_cast<int>(msg.wParam));break;}
+   if(msg.message==WM_KEYDOWN&&(msg.hwnd==hwnd||IsChild(hwnd,msg.hwnd))){
+    if(msg.wParam==VK_F8){if(emergencyMute)emergencyMute();continue;}
+    if(msg.wParam==VK_F7){if(suspendDuplex)suspendDuplex();continue;}
+    if(msg.wParam==VK_ESCAPE){DestroyWindow(hwnd);continue;}
+   }
+   if(!IsDialogMessageW(hwnd,&msg)){TranslateMessage(&msg);DispatchMessageW(&msg);}
+  }
+  if(ownerEnabled&&IsWindow(owner)){
+   EnableWindow(owner,TRUE);SetForegroundWindow(owner);
+   if(oldFocus&&IsWindow(oldFocus)&&(oldFocus==owner||IsChild(owner,oldFocus)))
+    SetFocus(oldFocus);
+  }
  }
 };
 // Modal owner-only native device chooser. Names shown come from a fresh WASAPI
