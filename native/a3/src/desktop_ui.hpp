@@ -33,7 +33,7 @@ enum Action {
  Play=101,Mic,Back,Forward,Restart,Repeat,NextLine,
  ReverbDown,ReverbUp,EchoDown,EchoUp,MusicDown,MusicUp,
  ChooseSong,ChooseSession,ChooseDevices,Reconnect,EmergencyMute,GainDown,GainUp,
-  PreviousLine,BrowseLyrics,MarkLoopA,MarkLoopB,ClearAB,ToggleAB,OffsetEarlier,OffsetLater,OffsetReset
+  PreviousLine,BrowseLyrics,MarkLoopA,MarkLoopB,ClearAB,ToggleAB,OffsetEarlier,OffsetLater,OffsetReset,SaveSession
 };
 struct Snapshot {
  std::wstring title,previous,current,next,input,output,notice;
@@ -195,7 +195,8 @@ struct Window {
      {ToggleAB,L"Toggle A-B loop\tCtrl+4"},
      {OffsetEarlier,L"Lyrics 100 ms earlier\tCtrl+["},
      {OffsetLater,L"Lyrics 100 ms later\tCtrl+]"},
-     {OffsetReset,L"Reset lyric offset\tCtrl+0"}};
+     {OffsetReset,L"Reset lyric offset\tCtrl+0"},
+     {SaveSession,L"Save local practice session\tCtrl+S"}};
     for(const auto& entry:entries)AppendMenuW(practiceMenu,MF_STRING,
        static_cast<UINT_PTR>(entry.action),entry.title);
     AppendMenuW(menubar,MF_POPUP,reinterpret_cast<UINT_PTR>(practiceMenu),L"&Practice");
@@ -239,6 +240,7 @@ struct Window {
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::BrowseLyrics,BN_CLICKED),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::MarkLoopA,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::OffsetLater,0),0);
+        PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::SaveSession,0),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::Play,BN_CLICKED),0);
         PostMessageW(h,WM_COMMAND,MAKEWPARAM(Action::EmergencyMute,BN_CLICKED),0);
         PostMessageW(h,WM_CLOSE,0,0);
@@ -281,7 +283,7 @@ struct Window {
     else if(w==VK_F10)self->notify(Play);
     return 0;
    case WM_COMMAND:
-    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=129)
+    if(HIWORD(w)==BN_CLICKED&&LOWORD(w)>=101&&LOWORD(w)<=130)
      self->notify(static_cast<Action>(LOWORD(w)));
     return 0;
    case WM_CLOSE:
@@ -329,6 +331,7 @@ struct Window {
        case '3':shortcut=ClearAB;break;
        case '4':shortcut=ToggleAB;break;
        case '0':shortcut=OffsetReset;break;
+       case 'S':shortcut=SaveSession;break;
        case VK_OEM_4:shortcut=OffsetEarlier;break;
        case VK_OEM_6:shortcut=OffsetLater;break;
        default:recognized=false;break;

@@ -8,6 +8,7 @@
 #include "handoff.hpp"
 #include "lrc.hpp"
 #include "practice.hpp"
+#include "session_export.hpp"
 #include "desktop_ui.hpp"
 #include "device_recovery.hpp"
 #include <algorithm>
@@ -81,6 +82,7 @@ static Options parse(int argc,char** argv) {
                      <<"  --probe-handoff  validate .rtk WITHOUT opening devices\n"
                      <<"  --lrc PATH  attach standard local .lrc lyrics to selected song\n"
                      <<"  --probe-lrc  validate --lrc file WITHOUT opening devices\n"
+                     <<"  GUI: Practice > Save session, or console: save FILE.rtk\n"
                      <<"  --setup  guided mic/speaker device selection\n"
                      <<"  --gui  in-process Win32 karaoke view\n"
                      <<"  --console  original command-line controls\n"
@@ -179,6 +181,35 @@ static std::wstring chooseHandoffFile(){
  const DWORD err=CommDlgExtendedError();
  if(err)throw std::runtime_error("Could not open native session picker (error "+std::to_string(err)+")");
  return {}; // User cancelled, no session imported.
+}
+// Save is an explicit owner action. Neither the application nor a background
+// callback may write any file without this OS-mediated selection.
+static std::wstring chooseSessionSaveFile() {
+ wchar_t filename[32768]={};
+ OPENFILENAMEW d{};
+ d.lStructSize=sizeof(d);d.lpstrFile=filename;
+ d.nMaxFile=static_cast<DWORD>(sizeof(filename)/sizeof(filename[0]));
+ d.lpstrFilter=L"ROOMTONE practice sessions (*.rtk)\0*.rtk\0";
+ d.lpstrDefExt=L"rtk";
+ d.Flags=OFN_EXPLORER|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
+ if(GetSaveFileNameW(&d))return filename;
+ const DWORD error=CommDlgExtendedError();
+ if(error)throw std::runtime_error("Native save dialog failed (error "+std::to_string(error)+")");
+ return {};
+}
+// CREATE_NEW makes export fail closed instead of overwriting an unrelated
+// user document or a concurrently changed prior export. No persistent
+// background autosave, temp database, credential or account.
+static void saveSessionNew(const std::filesystem::path& file,const std::string& encoded) {
+ const HANDLE handle=CreateFileW(file.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,
+                                 FILE_ATTRIBUTE_NORMAL,nullptr);
+ if(handle==INVALID_HANDLE_VALUE)
+  throw std::runtime_error("Session destination already exists or cannot be created; select a NEW .rtk filename");
+ DWORD written=0;
+ const BOOL success=WriteFile(handle,encoded.data(),static_cast<DWORD>(encoded.size()),&written,nullptr);
+ const BOOL durable=success&&written==encoded.size()&&FlushFileBuffers(handle);
+ CloseHandle(handle);
+ if(!durable){DeleteFileW(file.c_str());throw std::runtime_error("Could not complete local session export");}
 }
 static int chooseDeviceIndex(const char* label,ma_device_info* list,ma_uint32 count){
     for(;;){
@@ -798,6 +829,33 @@ int main(int argc,char** argv) {
                     case Action::MusicUp:level(rt.musicGain,0.03f,0.5f);break;
                     case Action::GainDown:level(rt.gain,-0.02f,0.35f);break;
                     case Action::GainUp:level(rt.gain,0.02f,0.35f);break;
+                    case Action::SaveSession:{
+                        if(!rt.mixer.hasSong()||selectedSongFile.empty()){
+                            notice=L"Load original local song before saving session.";break;
+                        }
+                        // Export always joins the original callback, ensuring the
+                        // pending seek/restart is frozen consistently. A file picker
+                        // cannot leave voice monitoring enabled.
+                        safeStop();
+                        const auto exportSession=roomtone::session_export::snapshot(
+                            hasHandoff?rt.session:roomtone::Handoff{},
+                            selectedSongFile,selectedSongFile,
+                            rt.songPosition.load(),rt.mixer.songFrames(),
+                            rt.repeat.load(),rt.abStart.load(),rt.abEnd.load(),rt.abLoop.load());
+                        const auto encoded=roomtone::session_export::encode(exportSession);
+                        try{
+                            const auto destination=chooseSessionSaveFile();
+                            if(!destination.empty()){
+                                saveSessionNew(std::filesystem::path(destination),encoded);
+                                safeRestart();
+                                notice=L"Practice session saved to chosen local .rtk file. Voice MUTED, music PAUSED.";
+                            }else{
+                                safeRestart();
+                                notice=L"Save canceled; no file written. Voice MUTED, music PAUSED.";
+                            }
+                        }catch(...){safeRestart();throw;}
+                        break;
+                    }
                     case Action::Reconnect:safeStop();safeRestart();break;
                     case Action::ChooseSong:{
                         rt.monitoring.store(false);rt.musicPlaying.store(false);
