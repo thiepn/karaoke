@@ -192,3 +192,18 @@ Speed is kept only in the same **queue-owned volatile per-song practice snapshot
 Portable tests cover original exact 1.0x behavior, bounded 0.6–1.2 speed, stereo interpolation, EOF, seek, paused fade, changed file/queue ownership, NaN/Inf rejection and **unaltered live vocal DSP at different backing speeds**. Real audio quality, interpolation artifacts, subjective timing, singing in tune, hardware USB routing, NVDA/Narrator and screen scaling remain NOT_TESTED; **A4 remains NO_GO**.
 
 CLI `open`/`load` also resets rate to **100%** on an explicitly new original source. Speed is never allowed to bleed across unrelated tracks even in console mode.
+
+## Native per-line lyric timing correction (source-owned; A3 software only)
+
+The original Win32 **Practice** menu now corrects a **single imported timed lyric line** without changing the global offset, source text, playback, or existing A–B/bookmark frames:
+
+- **Ctrl+Shift+Left**: select one original lyric and move its source timestamp **100 ms earlier**.
+- **Ctrl+Shift+Right**: select one original lyric and move its source timestamp **100 ms later**.
+- **Ctrl+Shift+Enter**: select one original lyric and **align its timestamp to the owner playhead captured at command time**. The original signed global offset is subtracted when converting that original song frame to the canonical source timestamp.
+- **Ctrl+Z**: undo the **most recent** individual timestamp correction for this source. Undo is one step, not a permanent history timeline.
+
+Each operation first mutes microphone monitoring and pauses music before opening the existing keyboard-accessible Win32 lyric list. Select one source line, review its old/new source timestamps in milliseconds, and explicitly confirm **Yes** (default is **No**). Escape or a rejected/invalid correction changes nothing. The policy rejects source timestamps outside 0–720000 ms, after original song end, negative offset-adjusted times, a cue overtaking its source neighbors, or no-op changes. Equal-timestamp adjacent original lines remain legal per existing canonical V1 schema; the original ordered line IDs and texts are never sorted or silently rewritten.
+
+Confirmed corrections alter only the **local in-memory original `Handoff.lines[index].milliseconds`** and become immediately visible in original previous/current/next timed lyrics, browsing and source cue-based section selection. The original source filename, global lyric offset, playback position, queued bookmarks and existing A–B frame markers do not change. No automatic microphone/music playback, WASAPI restart or data migration occurs. The one-level undo is held in the **same per-song volatile queue practice state**; switching to a different owner-selected song preserves each original source's separate undo and edits, while a changed source version or a fresh .rtk/.lrc import invalidates obsolete undo. **Ctrl+S** is still the only explicit route to export corrected lyrics into a **new, non-overwriting local .rtk file** using the unchanged canonical `ROOMTONE_HANDOFF_V1` format. No edits to source LRC files, no cloud store, no recording transfer.
+
+Automated portable tests cover timestamp monotonicity, signed offsets, source duration bounds, original-line preservation and canonical .rtk roundtrip, with synthetic Win32 menu-command and existing list-modal tests. Real Windows owner interactions, screen-reader behavior and audio latency are NOT_TESTED. **A4 physical NO GO**.

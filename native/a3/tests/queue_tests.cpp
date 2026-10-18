@@ -73,6 +73,8 @@ int main(){
   roomtone::song_queue::Practice history;
   history.hasSession=true;history.session.audioName=fixture.filename().u8string();
   history.frames=48000;history.session.lines={{1000,"Source lyric"}};
+  history.timingUndo=roomtone::Handoff{};history.timingUndo->audioName=fixture.filename().u8string();
+  history.timingUndo->lines={{850,"Earlier original cue"}};
   need(owned.rememberCurrent(history),"bound session cache");
   const auto original=roomtone::song_queue::observe(fixture);
   need(original.has_value()&&owned.verifiedPractice(0,*original).has_value(),
@@ -81,11 +83,14 @@ int main(){
   const auto replaced=roomtone::song_queue::observe(fixture);
   need(replaced.has_value()&&!original->same(*replaced),"source metadata changed");
   need(!owned.verifiedPractice(0,*replaced),"stale practice cannot attach to replacement");
-  need(owned.practice(0)->frames==48000,"cache is in-memory until source is rebound");
+  need(owned.practice(0)->frames==48000&&
+       owned.practice(0)->timingUndo&&
+       owned.practice(0)->timingUndo->lines[0].milliseconds==850,
+       "original timing undo stays owner-bound in RAM until source rebind");
   need(owned.practice(0).has_value(),"owner cache untouched until explicit queue reset");
   need(owned.commitVerified(0,*replaced),"new decoded source can be explicitly bound");
-  need(!owned.verifiedPractice(0,*replaced),
-       "new source version permanently invalidates stale original practice");
+  need(!owned.verifiedPractice(0,*replaced)&&!owned.practice(0),
+       "new source version permanently invalidates stale original lyrics and undo");
   roomtone::song_queue::Practice updated;
   updated.hasSession=true;updated.session.audioName=fixture.filename().u8string();
   updated.session.lines={{2300,"New source lyric"}};updated.frames=96000;
