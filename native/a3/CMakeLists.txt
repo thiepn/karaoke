@@ -30,6 +30,8 @@ add_executable(roomtone_a3_rehearsal_cues_tests tests/rehearsal_cues_tests.cpp)
 add_test(NAME native_source_owned_rehearsal_cues COMMAND roomtone_a3_rehearsal_cues_tests)
 add_executable(roomtone_a3_speed_tests tests/practice_speed_tests.cpp)
 add_test(NAME native_original_backing_speed COMMAND roomtone_a3_speed_tests)
+add_executable(roomtone_a3_lyric_timing_tests tests/lyric_timing_tests.cpp)
+add_test(NAME native_source_lyric_timing_edit COMMAND roomtone_a3_lyric_timing_tests)
 
 # Windows-only experimental executable; existing browser code remains unchanged.
 if(WIN32)
