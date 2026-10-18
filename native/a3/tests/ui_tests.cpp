@@ -8,7 +8,7 @@ int main(){
 #ifdef _WIN32
  try{
   roomtone::desktop::Window window;
-  unsigned snapshots=0,playEvents=0,muteEvents=0,seekEvents=0,lastSeek=0,topologyEvents=0,tickEvents=0,previousEvents=0,browseEvents=0,modalMuteEvents=0,deviceModalMuteEvents=0,queueModalMuteEvents=0,loopEvents=0,offsetEvents=0,saveEvents=0,queueActionEvents=0,manageQueueEvents=0,effectsEvents=0,recoveryEvents=0,sectionEvents=0,suspendEvents=0,signalsEvents=0,rehearsalEvents=0,speedEvents=0;
+  unsigned snapshots=0,playEvents=0,muteEvents=0,seekEvents=0,lastSeek=0,topologyEvents=0,tickEvents=0,previousEvents=0,browseEvents=0,modalMuteEvents=0,deviceModalMuteEvents=0,queueModalMuteEvents=0,loopEvents=0,offsetEvents=0,saveEvents=0,queueActionEvents=0,manageQueueEvents=0,effectsEvents=0,recoveryEvents=0,sectionEvents=0,suspendEvents=0,signalsEvents=0,rehearsalEvents=0,speedEvents=0,timingEvents=0;
   window.syntheticTest=true;
   bool compactLayout=false,focusLayoutSafe=false,focusSafetyVisible=false,compactFocusResized=false,speedVisible=false;
   unsigned focusSnapshots=0;
@@ -64,6 +64,10 @@ int main(){
   window.controller.action=[&](roomtone::desktop::Action action){
    if(action==roomtone::desktop::SuspendAudio)++suspendEvents;
    if(action==roomtone::desktop::ShowSignals)++signalsEvents;
+   if(action==roomtone::desktop::TimingEarlier||
+      action==roomtone::desktop::TimingLater||
+      action==roomtone::desktop::TimingAlign||
+      action==roomtone::desktop::TimingUndo)++timingEvents;
    if(action==roomtone::desktop::SpeedDown||action==roomtone::desktop::SpeedUp||
       action==roomtone::desktop::SpeedReset||action==roomtone::desktop::SpeedInfo)
      ++speedEvents;
@@ -185,7 +189,7 @@ int main(){
    if(!choice||*choice!=1)throw std::runtime_error("Native authored section picker accepted wrong cue");
   }
   const int result=window.run();
-  if(result!=0||snapshots==0||playEvents!=1||muteEvents!=1||previousEvents!=1||browseEvents!=1||loopEvents!=1||offsetEvents!=1||saveEvents!=1||queueActionEvents!=4||manageQueueEvents!=4||effectsEvents!=7||recoveryEvents!=1||signalsEvents!=1||speedEvents!=4||!speedVisible||rehearsalEvents!=4||sectionEvents!=3||suspendEvents!=2||focusSnapshots<1||!focusLayoutSafe||!focusSafetyVisible||!compactFocusResized||
+  if(result!=0||snapshots==0||playEvents!=1||muteEvents!=1||previousEvents!=1||browseEvents!=1||loopEvents!=1||offsetEvents!=1||saveEvents!=1||queueActionEvents!=4||manageQueueEvents!=4||effectsEvents!=7||recoveryEvents!=1||signalsEvents!=1||speedEvents!=4||timingEvents!=4||!speedVisible||rehearsalEvents!=4||sectionEvents!=3||suspendEvents!=2||focusSnapshots<1||!focusLayoutSafe||!focusSafetyVisible||!compactFocusResized||
       !window.focusedLyrics||window.lyricScale!=0||deviceModalMuteEvents!=1||queueModalMuteEvents!=1||modalMuteEvents!=1||!compactLayout||topologyEvents<1||tickEvents==0||seekEvents!=1||lastSeek!=43)
    throw std::runtime_error("in-process control/seek message, modal lifetime and focus");
   if(roomtone::desktop::wide("Nacht \xC3\xBC""ber")!=L"Nacht \xFC""ber")
