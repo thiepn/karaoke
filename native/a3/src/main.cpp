@@ -18,6 +18,7 @@
 #include "practice_speed.hpp"
 #include "signal_diagnostics.hpp"
 #include "lyric_sections.hpp"
+#include "lyric_timing.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <sstream>
@@ -589,6 +590,7 @@ int main(int argc,char** argv) {
             std::wstring notice=lastDeviceIssue.empty()
                 ?L"Start with wired headphones at low volume. F9 (focused window) toggles mic."
                 :lastDeviceIssue+L" Voice and music muted.";
+            std::optional<roomtone::Handoff> timingUndo; // queue-owned RAM; one original correction back
             auto safeStop=[&](){
                 rt.monitoring.store(false);rt.musicPlaying.store(false);
                 if(deviceActive){ma_device_uninit(&device);deviceActive=false;}
@@ -615,6 +617,7 @@ int main(int argc,char** argv) {
                 state.importedOffset=importedLyricOffset;
                 state.frames=rt.songPosition.load();
                 state.rehearsalCues=rehearsalCues.items();
+                state.timingUndo=timingUndo;
                 state.backingSpeed=rt.backingSpeed.load();
                 state.repeat=rt.repeat.load();
                 state.loopA=rt.abStart.load();state.loopB=rt.abEnd.load();
@@ -641,6 +644,7 @@ int main(int argc,char** argv) {
                 rt.rewindRequest.store(false);
                 rt.mixer.replaceSong(std::move(decoded));
                 rehearsalCues.clear(); // no original audio cue crosses source selection
+                timingUndo.reset(); // never carry an undo across original source ownership
                 rt.backingSpeed.store(roomtone::practice_speed::Normal);
                 rt.songPosition.store(0);
                 rt.session=roomtone::Handoff{};hasHandoff=false;
@@ -656,6 +660,7 @@ int main(int argc,char** argv) {
                     rt.songPosition.store(frames);
                     rt.seekRequest.store(frames); // consumed on first reopened callback
                     rehearsalCues.restore(resume->rehearsalCues,rt.mixer.songFrames());
+                    timingUndo=resume->hasSession?resume->timingUndo:std::nullopt;
                     rt.backingSpeed.store(roomtone::practice_speed::safe(resume->backingSpeed));
                     rt.session=resume->hasSession?resume->session:roomtone::Handoff{};
                     hasHandoff=resume->hasSession;
@@ -1189,6 +1194,99 @@ int main(int argc,char** argv) {
                         rt.repeat.store(!rt.repeat.load());
                         notice=rt.repeat.load()?L"A-B practice repeat ON; mic unchanged."
                             :L"A-B practice repeat OFF; mic unchanged.";break;
+                    case Action::TimingEarlier:case Action::TimingLater:case Action::TimingAlign:{
+                        if(!rt.mixer.hasSong()||!hasHandoff||rt.session.lines.empty()){
+                            notice=L"Import matching original .rtk/.lrc timed lyrics before correcting an individual line.";
+                            break;
+                        }
+                        // Freeze intended original source PLAYHEAD BEFORE
+                        // owner modal; never sample time after a long dialog.
+                        // Pending local seek/restart wins over callback UI clock.
+                        const auto pending=rt.seekRequest.load();
+                        const std::uint64_t playhead=rt.rewindRequest.load()?0:
+                            pending==roomtone::recovery::NoSeek?rt.songPosition.load():pending;
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        const auto frameLimit=rt.mixer.songFrames();
+                        std::vector<std::wstring> lines;
+                        lines.reserve(rt.session.lines.size());
+                        for(std::size_t i=0;i<rt.session.lines.size();++i){
+                            const auto& lyric=rt.session.lines[i];
+                            const auto observed=std::clamp<std::int64_t>(
+                                static_cast<std::int64_t>(lyric.milliseconds)+rt.session.offsetMs,
+                                0,static_cast<std::int64_t>(frameLimit/48));
+                            std::wstring text=L"Line "+std::to_wstring(i+1)+L" · "+
+                                roomtone::desktop::clock(static_cast<unsigned>(observed/1000))+
+                                L" · "+roomtone::desktop::wide(lyric.text);
+                            if(text.size()>260)text.resize(260);
+                            lines.push_back(std::move(text));
+                        }
+                        const auto at=roomtone::lyricIndexAt(rt.session,static_cast<std::uint32_t>(
+                            std::min<std::uint64_t>(playhead/48,720000)));
+                        const auto selected=roomtone::desktop::selectQueuedSong(
+                            lines,at==rt.session.lines.size()?0:at,window.hwnd,
+                            [&]{rt.monitoring.store(false);},
+                            L"ROOMTONE | Correct original lyric timestamp",
+                            L"Choose ONE original lyric line. Enter selects; Esc cancels; F8 mutes.",
+                            L"Select line");
+                        if(!selected){
+                            notice=L"Lyric timing edit canceled; original lyrics retained. Audio PAUSED and MUTED.";
+                            break;
+                        }
+                        const auto old=rt.session.lines[*selected].milliseconds;
+                        std::optional<roomtone::Handoff> edited;
+                        if(action==Action::TimingAlign)
+                            edited=roomtone::lyric_timing::alignToFrame(
+                                rt.session,*selected,playhead,frameLimit);
+                        else edited=roomtone::lyric_timing::nudge(
+                                rt.session,*selected,
+                                action==Action::TimingEarlier?-100:100,frameLimit);
+                        if(!edited){
+                            notice=L"Lyric correction refused: unchanged, reversed source order, invalid original duration or offset. No changes.";
+                            break;
+                        }
+                        const auto now=edited->lines[*selected].milliseconds;
+                        const std::wstring preview=
+                            L"Adjust ONE original source-owned lyric?\n\nLine "+
+                            std::to_wstring(*selected+1)+L" / "+
+                            std::to_wstring(rt.session.lines.size())+
+                            L"\nOld SOURCE cue: "+std::to_wstring(old)+L" ms"+
+                            L"\nNew SOURCE cue: "+std::to_wstring(now)+L" ms"+
+                            L"\nLyric offset remains "+std::to_wstring(rt.session.offsetMs)+L" ms"+
+                            L"\n\nOnly the selected timestamp changes. Original text, source identity, "
+                            L"A-B frame markers, bookmarks and playback stay unchanged. "
+                            L"This edit is RAM-only until an explicit NEW .rtk export. "
+                            L"One-level Undo remains available. Monitoring and music are MUTED/PAUSED.";
+                        if(MessageBoxW(window.hwnd,preview.c_str(),
+                            L"ROOMTONE | Approve individual lyric correction",
+                            MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2)!=IDYES){
+                            notice=L"Lyric timing correction declined; original cue retained. Audio PAUSED/MUTED.";
+                            break;
+                        }
+                        timingUndo=rt.session;
+                        rt.session=std::move(*edited);
+                        notice=L"Lyric "+std::to_wstring(*selected+1)+L" corrected to "+
+                            std::to_wstring(now)+
+                            L" ms; original source text retained. Ctrl+Z undoes; Ctrl+S exports a NEW .rtk.";
+                        break;
+                    }
+                    case Action::TimingUndo:{
+                        if(!hasHandoff||!timingUndo){
+                            notice=L"No recent source timing correction to undo for this song.";break;
+                        }
+                        rt.monitoring.store(false);rt.musicPlaying.store(false);
+                        if(MessageBoxW(window.hwnd,
+                            L"Undo the most recent individual lyric timestamp edit for this ORIGINAL song?\n"
+                            L"Current source text and position are retained. No file changes.",
+                            L"ROOMTONE | Undo local timing correction",
+                            MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2)!=IDYES){
+                            notice=L"Timing undo declined; original current lyric cues retained.";
+                            break;
+                        }
+                        rt.session=std::move(*timingUndo);
+                        timingUndo.reset();
+                        notice=L"Last individual lyric correction undone in RAM; voice MUTED/music PAUSED.";
+                        break;
+                    }
                     case Action::OffsetEarlier:case Action::OffsetLater:case Action::OffsetReset:{
                         if(!hasHandoff||rt.session.lines.empty()){
                             notice=L"Import timed lyrics before adjusting offset.";break;
@@ -1547,6 +1645,7 @@ int main(int argc,char** argv) {
                         const bool wasReady=deviceActive&&!rt.interrupted.load();
                         safeStop();
                         rt.session=loaded;hasHandoff=true;rt.repeat.store(loaded.loop);
+                        timingUndo.reset(); // imported original lyrics start a new correction history
                         importedLyricOffset=loaded.offsetMs;
                         const auto begin=std::min<std::size_t>(loaded.loopStartMs*48ULL,rt.mixer.songFrames());
                         const auto finish=std::min<std::size_t>(loaded.loopEndMs*48ULL,rt.mixer.songFrames());

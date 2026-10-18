@@ -21,6 +21,7 @@ struct Practice {
  std::string displayTitle;
  std::uint64_t frames=0,loopA=0,loopB=0;
  std::vector<std::uint64_t> rehearsalCues; // never written to browser/.rtk, original queue owns RAM
+ std::optional<Handoff> timingUndo; // last source-owned lyric correction; volatile only
  float backingSpeed=1.0f; // source-owned session-only instrumental resampling
  int importedOffset=0;
  bool hasSession=false,repeat=false,loopValid=false,startMarked=false;
